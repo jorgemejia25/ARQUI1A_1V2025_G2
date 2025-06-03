@@ -1,38 +1,45 @@
+import { subtitle, title } from "@/components/primitives";
+
+import { Code } from "@heroui/code";
+import { GithubIcon } from "@/components/icons";
+import { Leaf } from "lucide-react";
 import { Link } from "@heroui/link";
 import { Snippet } from "@heroui/snippet";
-import { Code } from "@heroui/code";
 import { button as buttonStyles } from "@heroui/theme";
-
 import { siteConfig } from "@/config/site";
-import { title, subtitle } from "@/components/primitives";
-import { GithubIcon } from "@/components/icons";
 
 export default function Home() {
   return (
     <section className="flex flex-col items-center justify-center gap-4 py-8 md:py-10">
       <div className="inline-block max-w-xl text-center justify-center">
-        <span className={title()}>Make&nbsp;</span>
-        <span className={title({ color: "violet" })}>beautiful&nbsp;</span>
-        <br />
-        <span className={title()}>
-          websites regardless of your design experience.
+        <div className="flex items-center justify-center gap-3 mb-6">
+          <div className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center">
+            <Leaf className="w-7 h-7 text-primary-foreground" />
+          </div>
+          <span className={title({ size: "lg" })}>SIEPA</span>
+        </div>
+        <span className={title()}>Sistema Inteligente de&nbsp;</span>
+        <span className={title({ color: "violet" })}>
+          Evaluación y Predicción&nbsp;
         </span>
+        <br />
+        <span className={title()}>Ambiental</span>
         <div className={subtitle({ class: "mt-4" })}>
-          Beautiful, fast and modern React UI library.
+          Monitoreo en tiempo real de condiciones ambientales y consumo
+          energético.
         </div>
       </div>
 
       <div className="flex gap-3">
         <Link
-          isExternal
           className={buttonStyles({
             color: "primary",
             radius: "full",
             variant: "shadow",
           })}
-          href={siteConfig.links.docs}
+          href="/dashboard"
         >
-          Documentation
+          Abrir Dashboard
         </Link>
         <Link
           isExternal
@@ -47,7 +54,8 @@ export default function Home() {
       <div className="mt-8">
         <Snippet hideCopyButton hideSymbol variant="bordered">
           <span>
-            Get started by editing <Code color="primary">app/page.tsx</Code>
+            Panel de control disponible en{" "}
+            <Code color="primary">/dashboard</Code>
           </span>
         </Snippet>
       </div>
