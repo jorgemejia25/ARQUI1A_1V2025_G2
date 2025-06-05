@@ -22,6 +22,7 @@
 
 import {
   Activity,
+  Cloudy,
   Cpu,
   Droplets,
   Home,
@@ -39,20 +40,12 @@ export default function Dashboard() {
   // Mock data for demonstration
   const statusData = [
     {
-      id: "temperature",
-      label: "Temperatura",
+      id: "temperature_humidity",
+      label: "Temperatura y Humedad",
       value: "24.5°C",
       trend: "Normal",
       icon: Thermometer,
       color: "success" as const,
-    },
-    {
-      id: "humidity",
-      label: "Humedad",
-      value: "65%",
-      trend: "Alto",
-      icon: Droplets,
-      color: "warning" as const,
     },
     {
       id: "air_quality",
@@ -70,6 +63,23 @@ export default function Dashboard() {
       icon: Lightbulb,
       color: "primary" as const,
     },
+    {
+      id: "atmospheric_pressure",
+      label: "Precion Atmosferica",
+      value: "500 hPa",
+      trend: "Óptimo",
+      icon: Cloudy,
+      color: "primary" as const,
+    },
+    {
+      id: "motion_detection",
+      label: "Detección de Movimiento",
+      value: "50 cm",
+      trend: "Normal",
+      icon: Activity,
+      color: "primary" as const,
+    },
+
   ];
 
   const energyMetrics = [
