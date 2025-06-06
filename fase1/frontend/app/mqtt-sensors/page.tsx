@@ -6,8 +6,8 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Divider } from "@heroui/divider";
 import { Switch } from "@heroui/switch";
-import { useState } from "react";
 import { useMqtt } from "./useMqtt";
+import { useState } from "react";
 
 export default function MqttSensorsPage() {
   const {

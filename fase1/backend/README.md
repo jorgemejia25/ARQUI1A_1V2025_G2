@@ -1,155 +1,110 @@
 # Sistema SIEPA - Backend
 
-Sistema de monitoreo ambiental con sensores IoT, display LCD y comunicación MQTT.
 
-## 🏗️ Estructura del Proyecto
 
+
+## Arquitectura del Sistema
+
+```
+┌─────────────────┐    MQTT     ┌─────────────────┐    WebSocket    ┌─────────────────┐
+│   Sensores IoT  │ ──────────► │   Mosquitto     │ ──────────────► │    Frontend     │
+│                 │             │   Broker        │                 │   (Next.js)     │
+│ • DHT11         │             │                 │                 │                 │
+│ • HC-SR04       │             │ • Puerto 1883   │                 │ • Monitor MQTT  │
+│ • LDR           │             │ • Puerto 9001   │                 │ • Dashboard     │
+│ • MQ135         │             │   (WebSocket)   │                 │ • Control       │
+│ • Buzzer        │             │                 │                 │                 │
+└─────────────────┘             └─────────────────┘                 └─────────────────┘
+         │                               │
+         │                               │
+         ▼                               ▼
+┌─────────────────┐             ┌─────────────────┐
+│  Sistema SIEPA  │◄────────────│  Display LCD    │
+│   (Python)      │             │   (20x4 I2C)    │
+│                 │             │                 │
+│ • SensorManager │             │ • Estado        │
+│ • DisplayManager│             │ • Lecturas      │
+│ • MQTTManager   │             │ • Alertas       │
+└─────────────────┘             └─────────────────┘
+```
+
+## Requisitos del Sistema
+
+### Sistema Operativo
+- **Ubuntu 20.04+** / **Debian 10+** / **Raspberry Pi OS**
+- **Python 3.8+**
+- **Node.js 18+**
+- **npm** o **pnpm**
+
+### Hardware (Modo Real)
+- **Raspberry Pi** (cualquier modelo con GPIO)
+- **DHT11** - Sensor de temperatura y humedad
+- **HC-SR04** - Sensor ultrasónico de distancia
+- **LDR** - Fotorresistencia
+- **MQ135** - Sensor de calidad del aire
+- **Buzzer** - Alerta sonora
+- **Display LCD 20x4 I2C** - Pantalla de estado
+
+### 4. Estructura del Proyecto Backend
 ```
 backend/
-├── main.py                     # Punto de entrada principal
-├── config/                     # Configuraciones
-│   ├── __init__.py
-│   └── settings.py            # Configuración centralizada
-├── core/                      # Lógica principal
-│   ├── __init__.py
-│   ├── system.py              # Sistema principal integrado
-│   ├── sensors/               # Gestión de sensores
-│   │   ├── __init__.py
-│   │   └── sensor_manager.py  # Manager de sensores
-│   ├── display/               # Gestión de display
-│   │   ├── __init__.py
-│   │   └── display_manager.py # Manager de display LCD
-│   ├── mqtt/                  # Comunicación MQTT
-│   │   ├── __init__.py
-│   │   ├── mqtt_manager.py    # Manager MQTT integrado
-│   │   ├── publisher.py       # Publicador MQTT original
-│   │   └── subscriber.py      # Suscriptor MQTT original
-│   └── utils/                 # Utilidades
-├── tests/                     # Pruebas unitarias
-├── docs/                      # Documentación adicional
-├── sensores/                  # Código legacy (mantener)
-└── mqtt/                      # Código MQTT legacy (mantener)
+├── config/
+│   └── settings.py          # Configuración centralizada
+├── core/
+│   ├── system.py            # Sistema principal SIEPA
+│   ├── sensors/
+│   │   └── sensor_manager.py # Gestión de sensores
+│   ├── display/
+│   │   └── display_manager.py # Gestión del display
+│   └── mqtt/
+│       └── mqtt_manager.py   # Gestión de MQTT
+├── main.py                  # Punto de entrada principal
+├── demo_mosquitto.py        # Demostración completa
+├── test_mqtt_sensors.py     # Pruebas de integración
+├── monitor_mqtt.py          # Monitor de mensajes MQTT
+└── requirements.txt         # Dependencias Python
 ```
-
-## 🚀 Uso del Sistema
-
-### Instalación de dependencias
-```bash
-# Para modo testing (solo Python estándar)
-pip install paho-mqtt  # Solo si usas MQTT
-
-# Para modo real (Raspberry Pi)
-pip install RPi.GPIO adafruit-circuitpython-dht RPLCD paho-mqtt
-```
-
-### Ejecución
-
-#### Modo Testing (Por defecto)
-```bash
-python main.py                    # Solo sensores simulados
-python main.py --mqtt            # Con MQTT habilitado
-```
-
-#### Modo Real (Raspberry Pi)
-```bash
-python main.py --mode real       # Sensores físicos
-python main.py --mode real --mqtt # Modo completo con MQTT
-```
-
-### Opciones disponibles
-```bash
-python main.py --help           # Ver todas las opciones
-python main.py --version        # Ver versión
-```
-
-## 📊 Sensores Soportados
-
-| Sensor | Descripción | Pin |
-|--------|-------------|-----|
-| DHT11 | Temperatura y Humedad | GPIO 4 |
-| HC-SR04 | Distancia Ultrasónica | TRIG: 23, ECHO: 24 |
-| LDR | Fotorresistencia | GPIO 17 |
-| MQ135 | Calidad del Aire | GPIO 27 |
-| Buzzer | Alerta Sonora | GPIO 22 |
-| LCD I2C | Display 20x4 | I2C 0x27 |
-
-## 📡 Tópicos MQTT
+## Tópicos MQTT
 
 ### Publicación (Sistema → Frontend)
-- `siepa/sensors` - Datos completos de todos los sensores
-- `siepa/sensors/temperature` - Solo temperatura
-- `siepa/sensors/humidity` - Solo humedad
-- `siepa/sensors/distance` - Solo distancia
-- `siepa/sensors/light` - Solo estado de luz
-- `siepa/sensors/air_quality` - Solo calidad del aire
-- `siepa/actuators/buzzer` - Estado del buzzer
+```
+siepa/sensors                    # Datos completos (JSON)
+siepa/sensors/temperature        # Temperatura (°C)
+siepa/sensors/humidity          # Humedad (%)
+siepa/sensors/distance          # Distancia (cm)
+siepa/sensors/light             # Luz (true/false)
+siepa/sensors/air_quality       # Calidad aire (true=malo)
+siepa/actuators/buzzer          # Estado buzzer (JSON)
+```
 
 ### Suscripción (Frontend → Sistema)
-- `siepa/commands/buzzer` - Control remoto del buzzer
-- `siepa/commands/system` - Comandos del sistema
-
-## ⚙️ Configuración
-
-Toda la configuración está centralizada en `config/settings.py`:
-
-- **SENSOR_CONFIG**: Configuración de pines y intervalos
-- **DISPLAY_CONFIG**: Configuración del LCD
-- **MQTT_CONFIG**: Configuración del broker MQTT
-- **SIMULATION_RANGES**: Rangos para datos simulados
-- **ALERT_CONFIG**: Configuración de alertas
-
-## 🧪 Modo Testing vs Modo Real
-
-### Testing
-- ✅ No requiere hardware
-- ✅ Datos simulados realistas
-- ✅ LCD simulado en consola
-- ✅ Desarrollo y pruebas rápidas
-
-### Real
-- 🔧 Requiere Raspberry Pi
-- 🔧 Sensores físicos conectados
-- 🔧 LCD I2C real
-- 🔧 Librerías específicas instaladas
-
-## 🔧 Desarrollo
-
-### Arquitectura Modular
-- **SensorManager**: Abstrae lectura de sensores reales/simulados
-- **DisplayManager**: Abstrae display LCD real/simulado
-- **MQTTManager**: Maneja comunicación MQTT opcional
-- **SIEPASystem**: Integra todos los componentes
-
-### Extensibilidad
-- Agregar nuevos sensores en `SensorManager`
-- Modificar formato de display en `DisplayManager`
-- Agregar nuevos tópicos MQTT en `MQTTManager`
-- Personalizar alertas en configuración
-
-## 🐛 Solución de Problemas
-
-### Error de importación en modo real
 ```
-ImportError: Librerías de Raspberry Pi no disponibles
+siepa/commands/buzzer           # Control del buzzer
+siepa/commands/system           # Comandos del sistema
+siepa/commands/sensors/+        # Control de sensores
 ```
-**Solución**: Use `--mode testing` para desarrollo sin hardware
 
-### MQTT no conecta
-```
-Error conectando a MQTT: [Errno 111] Connection refused
-```
-**Solución**: Verifique que el broker MQTT esté ejecutándose
+### Formato de Datos
+```json
+// siepa/sensors
+{
+  "temperature": 25.6,
+  "humidity": 60.3,
+  "distance": 123.45,
+  "light": true,
+  "air_quality_bad": false,
+  "timestamp": 1749175125.395273,
+  "mode": "testing",
+  "system": "SIEPA"
+}
 
-### Permisos GPIO
+// siepa/actuators/buzzer
+{
+  "state": true,
+  "timestamp": 1749175125.395273,
+  "mode": "testing"
+}
 ```
-RuntimeError: No access to /dev/mem
-```
-**Solución**: Ejecute con `sudo` en Raspberry Pi
 
-## 📈 Próximas Funcionalidades
 
-- [ ] API REST para consulta de datos
-- [ ] Base de datos para histórico
-- [ ] Dashboard web integrado
-- [ ] Alertas por email/SMS
-- [ ] Calibración automática de sensores 
+
