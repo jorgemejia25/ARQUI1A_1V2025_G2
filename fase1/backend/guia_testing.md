@@ -27,6 +27,8 @@ sudo systemctl start mosquitto
 ```bash
 # Solo necesitamos paho-mqtt para las pruebas
 sudo apt install python3-paho-mqtt -y
+# Instalamos todas las dependencias del proyecto
+pip install -r requirements.txt
 ```
 
 ##  Ejecución del Backend
