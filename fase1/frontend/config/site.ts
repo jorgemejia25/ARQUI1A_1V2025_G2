@@ -9,16 +9,16 @@ export const siteConfig = {
       href: "/",
     },
     {
+      label: "MQTT Sensors",
+      href: "/mqtt-sensors",
+    },
+    {
+      label: "Dashboard",
+      href: "/dashboard",
+    },
+    {
       label: "Docs",
       href: "/docs",
-    },
-    {
-      label: "Pricing",
-      href: "/pricing",
-    },
-    {
-      label: "Blog",
-      href: "/blog",
     },
     {
       label: "About",
@@ -33,6 +33,10 @@ export const siteConfig = {
     {
       label: "Dashboard",
       href: "/dashboard",
+    },
+    {
+      label: "MQTT Sensors",
+      href: "/mqtt-sensors",
     },
     {
       label: "Projects",

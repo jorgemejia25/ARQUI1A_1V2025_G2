@@ -1,0 +1,2 @@
+[console_scripts]
+rplcd-tests = RPLCD_Tests.entrypoint:run

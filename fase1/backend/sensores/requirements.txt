@@ -1,0 +1,22 @@
+# === Librerías principales ===
+# Para sensor DHT11/DHT22
+adafruit-circuitpython-dht
+adafruit-blinka
+
+# Para fotorresistencia con MCP3008 ADC
+adafruit-circuitpython-mcp3xxx
+
+# GPIO control alternativo (opcional)
+RPi.GPIO
+
+# === Librerías alternativas ===
+# Si las opciones modernas no funcionan
+# Adafruit-DHT==1.4.0 
+
+# === Notas de instalación ===
+# 1. Activar entorno virtual: source sensor_env/bin/activate
+# 2. Instalar dependencias: pip install -r requirements.txt
+# 3. Para MCP3008 también instalar: pip install adafruit-circuitpython-busdevice
+
+# Board
+board
