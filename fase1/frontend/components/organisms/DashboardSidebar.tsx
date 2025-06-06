@@ -81,7 +81,7 @@ export default function DashboardSidebar({
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-foreground">SIEPA</h1>
-                <p className="text-sm text-foreground-500">Dashboard v1.0</p>
+                <p className="text-sm text-foreground-500">Grupo 2</p>
               </div>
             </div>
             {onClose && (
