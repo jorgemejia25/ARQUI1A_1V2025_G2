@@ -5,6 +5,10 @@
  * a comprehensive overview of environmental metrics. Part of the dashboard's main
  * status display section.
  *
+ * This component manages local power state for each status card using React state.
+ * The power state is not persisted and will reset on page reload or navigation.
+ * Each StatusCard receives its own power state and a toggle handler.
+ *
  * @param props - Component props
  * @param props.statusData - Array of status data objects containing metric information
  * @param props.onViewDetails - Optional callback function when a status card's details are viewed
@@ -32,6 +36,7 @@
  */
 
 import { ReactElement } from "react";
+import { useState } from "react";
 import StatusCard from "@/components/molecules/StatusCard";
 
 interface StatusData {
@@ -52,8 +57,25 @@ export default function StatusOverviewGrid({
   statusData,
   onViewDetails,
 }: StatusOverviewGridProps) {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-6">
+  // Local state for the power toggle of each sensor card.
+  // This state is not persisted and will reset on reload or navigation.
+
+   const [powerStates, setPowerStates] = useState<{ [id: string]: boolean }>(
+    () => Object.fromEntries(statusData.map((s) => [s.id, true]))
+  );
+    /**
+   * Handles toggling the power state for a specific status card.
+   * @param id - The id of the status card to toggle.
+   */
+
+  const handleTogglePower = (id: string) => {
+    setPowerStates((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  };
+
+  return (    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 lg:gap-6 ">
       {statusData.map((status) => (
         <StatusCard
           key={status.id}
@@ -65,6 +87,8 @@ export default function StatusOverviewGrid({
           onViewDetails={
             onViewDetails ? () => onViewDetails(status.id) : undefined
           }
+          powerOn={powerStates[status.id]}
+          onTogglePower={() => handleTogglePower(status.id)}
         />
       ))}
     </div>
