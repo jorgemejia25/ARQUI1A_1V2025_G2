@@ -35,6 +35,7 @@ import { Button } from "@heroui/button";
 import NavigationItem from "@/components/molecules/NavigationItem";
 import StatusIndicator from "@/components/atoms/StatusIndicator";
 import { usePathname } from "next/navigation";
+import { useSystemStore } from "@/lib/store/useSystemStore";
 
 interface SidebarItem {
   id: string;
@@ -55,12 +56,86 @@ export default function DashboardSidebar({
   onClose,
 }: DashboardSidebarProps) {
   const pathname = usePathname();
+  const { status, alerts } = useSystemStore();
+  const activeAlerts = alerts.filter((alert) => !alert.acknowledged);
 
   const isActivePage = (href: string) => {
     if (href === "/dashboard") {
       return pathname === href;
     }
     return pathname.startsWith(href);
+  };
+
+  // Función para obtener el color del indicador según el estado del sistema
+  const getSystemStatusColor = () => {
+    if (!status.isConnected || !status.isSystemActive) return "danger";
+    switch (status.systemMode) {
+      case "danger":
+        return "danger";
+      case "warning":
+        return "warning";
+      default:
+        return "success";
+    }
+  };
+
+  // Función para obtener el texto del estado del sistema
+  const getSystemStatusText = () => {
+    if (!status.isConnected) return "MQTT Desconectado";
+    if (!status.isSystemActive) return "Backend Inactivo";
+    switch (status.systemMode) {
+      case "danger":
+        return "Estado Crítico";
+      case "warning":
+        return "Advertencias Activas";
+      default:
+        return "Sistema Activo";
+    }
+  };
+
+  // Función para obtener el color del indicador MQTT
+  const getMqttStatusColor = () => {
+    if (!status.isConnected) return "danger";
+    switch (status.mqttStatus) {
+      case "Conectado y suscrito":
+        return "success";
+      case "Conectado":
+        return "primary";
+      case "Reconectando...":
+        return "warning";
+      case "Desconectado":
+      case "Offline":
+      case "Conexión cerrada":
+        return "danger";
+      case "Error de conexión":
+      case "Error en suscripción":
+        return "danger";
+      default:
+        return "secondary";
+    }
+  };
+
+  // Función para obtener texto descriptivo del estado MQTT
+  const getMqttStatusText = () => {
+    switch (status.mqttStatus) {
+      case "Conectado y suscrito":
+        return "Conectado";
+      case "Conectado":
+        return "Conectando";
+      case "Reconectando...":
+        return "Reconectando";
+      case "Desconectado":
+        return "Desconectado";
+      case "Offline":
+        return "Sin conexión";
+      case "Conexión cerrada":
+        return "Conexión cerrada";
+      case "Error de conexión":
+      case "Error en suscripción":
+        return "Error";
+      default:
+        return status.mqttStatus;
+    }
   };
 
   return (
@@ -116,17 +191,42 @@ export default function DashboardSidebar({
         <div className="mt-auto p-6 border-t border-divider">
           <div className="space-y-3">
             <div className="flex items-center gap-3 text-sm">
-              <StatusIndicator color="success" />
-              <span className="text-foreground-600">Sistema Activo</span>
+              <StatusIndicator
+                color={getSystemStatusColor()}
+                animate={status.systemMode === "danger"}
+              />
+              <span className="text-foreground-600">
+                {getSystemStatusText()}
+              </span>
             </div>
+            {status.isSyncing && (
+              <div className="flex items-center gap-3 text-sm">
+                <StatusIndicator color="primary" animate />
+                <span className="text-foreground-600">Sincronizando</span>
+              </div>
+            )}
+
             <div className="flex items-center gap-3 text-sm">
-              <StatusIndicator color="primary" animate />
-              <span className="text-foreground-600">Sincronizando</span>
+              <StatusIndicator
+                color={status.isSystemActive ? "success" : "danger"}
+                animate={!status.isSystemActive}
+              />
+              <span className="text-foreground-600">
+                Backend: {status.isSystemActive ? "Activo" : "Inactivo"}
+              </span>
             </div>
-            <div className="flex items-center gap-3 text-sm">
-              <StatusIndicator color="warning" />
-              <span className="text-foreground-600">2 Alertas</span>
-            </div>
+            {activeAlerts.length > 0 && (
+              <div className="flex items-center gap-3 text-sm">
+                <StatusIndicator
+                  color={status.systemMode === "danger" ? "danger" : "warning"}
+                  animate={status.systemMode === "danger"}
+                />
+                <span className="text-foreground-600">
+                  {activeAlerts.length}{" "}
+                  {activeAlerts.length === 1 ? "Alerta" : "Alertas"}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>
