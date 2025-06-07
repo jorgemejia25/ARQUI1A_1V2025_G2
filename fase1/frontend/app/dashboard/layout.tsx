@@ -1,5 +1,10 @@
 import DashboardLayout from "@/components/templates/DashboardLayout";
+import { MqttProvider } from "@/lib/providers/MqttProvider";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  return <DashboardLayout>{children}</DashboardLayout>;
+  return (
+    <MqttProvider>
+      <DashboardLayout>{children}</DashboardLayout>
+    </MqttProvider>
+  );
 }

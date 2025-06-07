@@ -6,7 +6,7 @@ import { Leaf } from "lucide-react";
 import { Link } from "@heroui/link";
 import { Snippet } from "@heroui/snippet";
 import { button as buttonStyles } from "@heroui/theme";
-import { siteConfig } from "@/config/site";
+import { siteConfig } from "@/lib/config/site";
 
 export default function Home() {
   return (

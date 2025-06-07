@@ -2,14 +2,34 @@
 
 import { Card, CardBody, CardHeader } from "@heroui/card";
 
+import AlertsDemo from "@/components/molecules/AlertsDemo";
+import AlertsPanel from "@/components/molecules/AlertsPanel";
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Divider } from "@heroui/divider";
 import { Switch } from "@heroui/switch";
+import TestAlertsButton from "@/components/molecules/TestAlertsButton";
 import { useMqtt } from "./useMqtt";
 import { useState } from "react";
+import { useSystemStore } from "@/lib/store/useSystemStore";
 
 export default function MqttSensorsPage() {
+  // Obtener datos del store del sistema
+  const {
+    sensorData: storeSensorData,
+    status,
+    clearSensorData,
+  } = useSystemStore();
+
+  // Estado local para los switches de sensores
+  const [sensorStates, setSensorStates] = useState({
+    temperature: true,
+    humidity: true,
+    distance: true,
+    light: true,
+    air_quality: true,
+  });
+
   const {
     isConnected,
     sensorData,
@@ -33,14 +53,11 @@ export default function MqttSensorsPage() {
     }
   );
 
-  // Estado local para los switches de sensores
-  const [sensorStates, setSensorStates] = useState({
-    temperature: true,
-    humidity: true,
-    distance: true,
-    light: true,
-    air_quality: true,
-  });
+  // Función para limpiar todos los datos
+  const handleClearData = () => {
+    clearData();
+    clearSensorData();
+  };
 
   // Función para manejar el cambio de estado de un sensor
   const handleSensorToggle = (sensorType: string, enabled: boolean) => {
@@ -197,7 +214,7 @@ export default function MqttSensorsPage() {
               <Button
                 size="sm"
                 variant="bordered"
-                onClick={clearData}
+                onClick={handleClearData}
                 disabled={sensorData.length === 0}
               >
                 Limpiar Datos
@@ -214,19 +231,60 @@ export default function MqttSensorsPage() {
           </div>
         </CardHeader>
         <CardBody>
-          <div className="flex items-center gap-3">
-            <Chip color={getChipColor(connectionStatus)} variant="flat">
-              {connectionStatus}
-            </Chip>
-            <span className="text-sm text-gray-500">
-              {isConnected ? "🟢" : "🔴"}
-              {isConnected
-                ? " Recibiendo datos del sistema SIEPA"
-                : " Sin conexión a Mosquitto"}
-            </span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Chip color={getChipColor(connectionStatus)} variant="flat">
+                {connectionStatus}
+              </Chip>
+              <span className="text-sm text-gray-500">
+                {isConnected ? "🟢" : "🔴"}
+                {isConnected
+                  ? " Recibiendo datos del sistema SIEPA"
+                  : " Sin conexión a Mosquitto"}
+              </span>
+            </div>
+            <div className="flex items-center gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                <div
+                  className={`w-2 h-2 rounded-full ${
+                    status.systemMode === "danger"
+                      ? "bg-danger animate-pulse"
+                      : status.systemMode === "warning"
+                        ? "bg-warning"
+                        : "bg-success"
+                  }`}
+                ></div>
+                <span className="text-foreground-600">
+                  {status.systemMode === "danger"
+                    ? "Estado Crítico"
+                    : status.systemMode === "warning"
+                      ? "Advertencias"
+                      : "Normal"}
+                </span>
+              </div>
+              {status.activeAlerts > 0 && (
+                <Chip
+                  size="sm"
+                  color={status.systemMode === "danger" ? "danger" : "warning"}
+                  variant="flat"
+                >
+                  {status.activeAlerts} alertas
+                </Chip>
+              )}
+            </div>
           </div>
         </CardBody>
       </Card>
+
+      {/* Panel de Alertas */}
+      <div className="mb-6">
+        <AlertsPanel />
+      </div>
+
+      {/* Demostración de Alertas Automáticas */}
+      <div className="mb-6">
+        <AlertsDemo />
+      </div>
 
       {/* Control de Sensores */}
       <Card className="mb-6">

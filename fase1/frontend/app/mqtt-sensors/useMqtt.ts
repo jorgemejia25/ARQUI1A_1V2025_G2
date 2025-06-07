@@ -1,6 +1,8 @@
 import mqtt, { MqttClient } from "mqtt";
 import { useCallback, useEffect, useState } from "react";
 
+import { useSystemStore } from "@/lib/store/useSystemStore";
+
 interface SensorData {
   topic: string;
   valor: any;
@@ -8,6 +10,8 @@ interface SensorData {
   timestamp: string;
   sensor_type?: string;
   complete_data?: any;
+  evaluationType?: string;
+  evalValue?: number;
 }
 
 interface UseMqttReturn {
@@ -34,9 +38,17 @@ export const useMqtt = (
   const [connectionStatus, setConnectionStatus] = useState("Desconectado");
   const [client, setClient] = useState<MqttClient | null>(null);
 
+  // Integrar con el store del sistema
+  const {
+    updateConnectionStatus,
+    addSensorData,
+    clearSensorData: clearStoreData,
+  } = useSystemStore();
+
   const clearData = useCallback(() => {
     setSensorData([]);
-  }, []);
+    clearStoreData();
+  }, [clearStoreData]);
 
   const publishCommand = useCallback(
     (topic: string, payload: any): boolean => {
@@ -71,33 +83,53 @@ export const useMqtt = (
 
     switch (sensorType) {
       case "temperature":
-        return { unidad: "°C", sensor_type: "Temperatura" };
+        return {
+          unidad: "°C",
+          sensor_type: "Temperatura",
+          evaluationType: "temperature", // Para usar en evaluateRisk
+        };
       case "humidity":
-        return { unidad: "%", sensor_type: "Humedad" };
+        return {
+          unidad: "%",
+          sensor_type: "Humedad",
+          evaluationType: "humidity",
+        };
       case "distance":
-        return { unidad: "cm", sensor_type: "Distancia" };
+        return {
+          unidad: "cm",
+          sensor_type: "Distancia",
+          evaluationType: "distance",
+        };
       case "light":
         return {
           unidad: value ? "Detectada" : "No detectada",
           sensor_type: "Luz",
+          evaluationType: "light",
         };
       case "air_quality":
         return {
           unidad: value ? "Malo" : "Bueno",
           sensor_type: "Calidad del Aire",
+          evaluationType: "air_quality",
         };
       case "buzzer":
         return {
           unidad: value ? "Activado" : "Desactivado",
           sensor_type: "Buzzer",
+          evaluationType: null, // No evaluar riesgos
         };
       case "status":
         return {
           unidad: "Estado",
           sensor_type: "Estado del Sistema",
+          evaluationType: null, // No evaluar riesgos
         };
       default:
-        return { unidad: "", sensor_type: "Sensor" };
+        return {
+          unidad: "",
+          sensor_type: "Sensor",
+          evaluationType: null,
+        };
     }
   };
 
@@ -131,6 +163,7 @@ export const useMqtt = (
       console.log("✅ Conectado al broker Mosquitto local!");
       setIsConnected(true);
       setConnectionStatus("Conectado");
+      updateConnectionStatus(true, "Conectado");
 
       // Suscribirse a todos los tópicos SIEPA
       topics.forEach((topic) => {
@@ -138,6 +171,7 @@ export const useMqtt = (
           if (err) {
             console.error(`Error al suscribirse a ${topic}:`, err);
             setConnectionStatus("Error en suscripción");
+            updateConnectionStatus(false, "Error en suscripción");
           } else {
             console.log(`📡 Suscrito a ${topic}`);
           }
@@ -145,6 +179,7 @@ export const useMqtt = (
       });
 
       setConnectionStatus("Conectado y suscrito");
+      updateConnectionStatus(true, "Conectado y suscrito");
     });
 
     newClient.on("message", (receivedTopic, message) => {
@@ -190,23 +225,48 @@ export const useMqtt = (
           };
         } else {
           // Datos individuales de sensores
-          const { unidad, sensor_type } = getUnitsAndSensorType(
+          const { unidad, sensor_type, evaluationType } = getUnitsAndSensorType(
             receivedTopic,
             parsedData
           );
 
+          const sensorValue =
+            typeof parsedData === "object"
+              ? parsedData.state !== undefined
+                ? parsedData.state
+                : parsedData.value !== undefined
+                  ? parsedData.value
+                  : JSON.stringify(parsedData)
+              : parsedData;
+
           newSensorData = {
             topic: receivedTopic,
-            valor:
-              typeof parsedData === "object"
-                ? parsedData.state !== undefined
-                  ? parsedData.state
-                  : JSON.stringify(parsedData)
-                : parsedData,
+            valor: sensorValue,
             unidad,
             timestamp: new Date().toLocaleString(),
             sensor_type,
           };
+
+          // Almacenar info para evaluación de riesgo
+          if (evaluationType) {
+            let evalValue = sensorValue;
+
+            // Para air_quality, convertir booleano a número si es necesario
+            if (evaluationType === "air_quality") {
+              if (typeof parsedData === "boolean") {
+                evalValue = parsedData ? 1 : 0;
+              } else if (typeof sensorValue === "string") {
+                evalValue =
+                  sensorValue.toLowerCase() === "malo" || sensorValue === "1"
+                    ? 1
+                    : 0;
+              }
+            }
+
+            // Agregar info de evaluación al objeto de datos
+            newSensorData.evaluationType = evaluationType;
+            newSensorData.evalValue = evalValue;
+          }
         }
 
         console.log(
@@ -214,6 +274,7 @@ export const useMqtt = (
         );
 
         setSensorData((prevData) => [newSensorData, ...prevData.slice(0, 49)]);
+        addSensorData(newSensorData);
       } catch (error) {
         console.error("Error al procesar mensaje MQTT:", error);
       }
@@ -223,33 +284,38 @@ export const useMqtt = (
       console.error("Error de conexión MQTT:", error);
       setConnectionStatus("Error de conexión");
       setIsConnected(false);
+      updateConnectionStatus(false, "Error de conexión");
     });
 
     newClient.on("close", () => {
       console.log("Conexión MQTT cerrada");
       setConnectionStatus("Conexión cerrada");
       setIsConnected(false);
+      updateConnectionStatus(false, "Conexión cerrada");
     });
 
     newClient.on("reconnect", () => {
       console.log("Reintentando conexión MQTT...");
       setConnectionStatus("Reconectando...");
+      updateConnectionStatus(false, "Reconectando...");
     });
 
     newClient.on("disconnect", () => {
       console.log("Desconectado del broker MQTT");
       setConnectionStatus("Desconectado");
       setIsConnected(false);
+      updateConnectionStatus(false, "Desconectado");
     });
 
     newClient.on("offline", () => {
       console.log("Cliente MQTT offline");
       setConnectionStatus("Offline");
       setIsConnected(false);
+      updateConnectionStatus(false, "Offline");
     });
 
     return newClient;
-  }, [brokerUrl, topics, client]);
+  }, [brokerUrl, topics, client, updateConnectionStatus]);
 
   const reconnect = useCallback(() => {
     setConnectionStatus("Reconectando...");

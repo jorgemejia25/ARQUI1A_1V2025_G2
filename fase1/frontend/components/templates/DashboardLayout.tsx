@@ -39,6 +39,7 @@ import { Bell, Menu, Home, Leaf, Database } from "lucide-react";
 import { Chip } from "@heroui/chip";
 import DashboardSidebar from "@/components/organisms/DashboardSidebar";
 import ThemeToggle from "@/components/atoms/ThemeToggle";
+import { useSystemStore } from "@/lib/store/useSystemStore";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -46,6 +47,10 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Obtener estado del sistema desde el store
+  const { status, alerts } = useSystemStore();
+  const activeAlerts = alerts.filter((alert) => !alert.acknowledged);
 
   // Define sidebar items directly in the client component
   const sidebarItems = [
@@ -108,18 +113,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             </div>
 
             <div className="flex items-center gap-3">
-              {/* System indicators - Hidden on small screens */}
-              <div className="hidden xl:flex items-center gap-4 text-sm">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-success rounded-full"></div>
-                  <span className="text-foreground-600">Sistema Activo</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
-                  <span className="text-foreground-600">Sincronizando</span>
-                </div>
-              </div>
-
               {/* Theme Switch */}
               <ThemeToggle />
 
@@ -128,19 +121,23 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 <Button
                   isIconOnly
                   variant="light"
-                  color="default"
+                  color={status.systemMode === "danger" ? "danger" : "default"}
                   className="w-10 h-10"
                 >
                   <Bell className="w-5 h-5" />
                 </Button>
-                <Chip
-                  size="sm"
-                  color="danger"
-                  variant="solid"
-                  className="absolute -top-1 -right-1 min-w-5 h-5 text-xs"
-                >
-                  2
-                </Chip>
+                {activeAlerts.length > 0 && (
+                  <Chip
+                    size="sm"
+                    color={
+                      status.systemMode === "danger" ? "danger" : "warning"
+                    }
+                    variant="solid"
+                    className="absolute -top-1 -right-1 min-w-5 h-5 text-xs"
+                  >
+                    {activeAlerts.length > 99 ? "99+" : activeAlerts.length}
+                  </Chip>
+                )}
               </div>
             </div>
           </div>
