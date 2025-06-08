@@ -32,8 +32,12 @@ class SensorManager:
         """Inicializa los sensores físicos"""
         try:
             import board
+            import busio
+            import digitalio
             import adafruit_dht
             import RPi.GPIO as GPIO
+            from adafruit_mcp3xxx.mcp3008 import MCP3008
+            from adafruit_mcp3xxx.analog_in import AnalogIn
             
             # Configurar GPIO
             GPIO.setmode(GPIO.BCM)
@@ -45,15 +49,17 @@ class SensorManager:
             GPIO.setup(self.config['ULTRASONIC_TRIG_PIN'], GPIO.OUT)
             GPIO.setup(self.config['ULTRASONIC_ECHO_PIN'], GPIO.IN)
             
-            # LDR
-            GPIO.setup(self.config['LDR_PIN'], GPIO.IN)
-            
-            # MQ135
-            GPIO.setup(self.config['MQ135_PIN'], GPIO.IN)
-            
             # Buzzer
-            GPIO.setup(self.config['BUZZER_PIN'], GPIO.OUT)
-            GPIO.output(self.config['BUZZER_PIN'], GPIO.LOW)
+            GPIO.setup(self.config['BUZZER_PIN'], GPIO.OUT, initial=GPIO.HIGH)  # Buzzer apagado al inicio
+            
+            # MCP3008 CONFIG
+            spi = busio.SPI(clock=board.SCK, MISO=board.MISO, MOSI=board.MOSI)
+            cs = digitalio.DigitalInOut(board.D8)  # CE0 (GPIO8)
+            mcp = MCP3008(spi, cs)
+            
+            # Canales analógicos
+            self.canal_ldr = AnalogIn(mcp, 0)      # CH0 = A0 del LDR
+            self.canal_mq135 = AnalogIn(mcp, 1)    # CH1 = A0 del MQ135
             
             self.GPIO = GPIO
             
@@ -74,15 +80,15 @@ class SensorManager:
         else:
             return self._read_ultrasonic_simulated()
     
-    def read_light(self) -> bool:
-        """Lee sensor de luz"""
+    def read_light(self) -> Tuple[bool, float]:
+        """Lee sensor de luz - retorna tuple (hay_luz, voltaje)"""
         if self.mode == 'real':
             return self._read_ldr_real()
         else:
             return self._read_ldr_simulated()
     
-    def read_air_quality(self) -> bool:
-        """Lee calidad del aire"""
+    def read_air_quality(self) -> Tuple[bool, float]:
+        """Lee calidad del aire - retorna tuple (aire_malo, voltaje)"""
         if self.mode == 'real':
             return self._read_mq135_real()
         else:
@@ -110,10 +116,14 @@ class SensorManager:
             data['distance'] = self.read_distance()
             
         if self.is_sensor_enabled('light'):
-            data['light'] = self.read_light()
+            hay_luz, voltaje_ldr = self.read_light()
+            data['light'] = hay_luz
+            data['light_voltage'] = voltaje_ldr
             
         if self.is_sensor_enabled('air_quality'):
-            data['air_quality_bad'] = self.read_air_quality()
+            aire_malo, voltaje_mq135 = self.read_air_quality()
+            data['air_quality_bad'] = aire_malo
+            data['air_quality_voltage'] = voltaje_mq135
         
         return data
     
@@ -162,17 +172,22 @@ class SensorManager:
         distance = (duration * 34300) / 2
         return round(distance, 2)
     
-    def _read_ldr_real(self) -> bool:
-        """Lee LDR real"""
-        return self.GPIO.input(self.config['LDR_PIN']) == self.GPIO.LOW
+    def _read_ldr_real(self) -> Tuple[bool, float]:
+        """Lee LDR real - retorna voltaje y determina si hay luz"""
+        voltaje_ldr = self.canal_ldr.voltage  # Voltaje 0 - 3.3V
+        hay_luz = voltaje_ldr > 1.0  # Umbral de luz
+        return hay_luz, round(voltaje_ldr, 2)
     
-    def _read_mq135_real(self) -> bool:
-        """Lee MQ135 real"""
-        return self.GPIO.input(self.config['MQ135_PIN']) == self.GPIO.LOW
+    def _read_mq135_real(self) -> Tuple[bool, float]:
+        """Lee MQ135 real - retorna voltaje y determina calidad del aire"""
+        voltaje_mq135 = self.canal_mq135.voltage  # Voltaje 0 - 3.3V
+        aire_malo = voltaje_mq135 > 1.0  # Umbral ajustable
+        return aire_malo, round(voltaje_mq135, 2)
     
     def _control_buzzer_real(self, state: bool):
         """Controla buzzer real"""
-        self.GPIO.output(self.config['BUZZER_PIN'], self.GPIO.HIGH if state else self.GPIO.LOW)
+        # Buzzer activado cuando hay aire malo (estado True)
+        self.GPIO.output(self.config['BUZZER_PIN'], self.GPIO.HIGH if not state else self.GPIO.LOW)
     
     # ============== MÉTODOS PARA SENSORES SIMULADOS ==============
     
@@ -191,15 +206,23 @@ class SensorManager:
         dist_range = self.simulation_ranges['DISTANCE']
         return round(random.uniform(dist_range['min'], dist_range['max']), 2)
     
-    def _read_ldr_simulated(self) -> bool:
-        """Simula LDR"""
-        return random.random() < self.simulation_ranges['LIGHT_PROBABILITY']
+    def _read_ldr_simulated(self) -> Tuple[bool, float]:
+        """Simula LDR con voltaje"""
+        voltaje_ldr = round(random.uniform(0.0, 3.3), 2)
+        hay_luz = voltaje_ldr > 1.0
+        return hay_luz, voltaje_ldr
     
-    def _read_mq135_simulated(self) -> bool:
-        """Simula MQ135"""
-        return random.random() < self.simulation_ranges['BAD_AIR_PROBABILITY']
-    
+    def _read_mq135_simulated(self) -> Tuple[bool, float]:
+        """Simula MQ135 con voltaje"""
+        voltaje_mq135 = round(random.uniform(0.0, 3.3), 2)
+        aire_malo = voltaje_mq135 > 1.0
+        return aire_malo, voltaje_mq135
+
     def cleanup(self):
-        """Limpia recursos"""
-        if self.mode == 'real' and hasattr(self, 'GPIO'):
-            self.GPIO.cleanup() 
+        """Limpia recursos del sensor manager"""
+        if self.mode == 'real':
+            try:
+                self.GPIO.cleanup()
+                print("🧹 Recursos GPIO limpiados")
+            except:
+                pass 

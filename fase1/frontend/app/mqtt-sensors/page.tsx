@@ -38,7 +38,7 @@ export default function MqttSensorsPage() {
     reconnect,
     publishCommand,
   } = useMqtt(
-    "ws://localhost:9001",
+    "wss://broker.hivemq.com:8884/mqtt",
     [
       "siepa/sensors",
       "siepa/sensors/+",

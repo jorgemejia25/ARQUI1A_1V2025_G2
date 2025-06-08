@@ -64,10 +64,13 @@ class SIEPASystem:
             # Leer todos los sensores
             sensor_data = self.sensor_manager.read_all_sensors()
             
-            # Controlar buzzer basado en calidad del aire
-            buzzer_state = sensor_data.get('air_quality_bad', False)
+            # Controlar buzzer basado en calidad del aire (igual que allin.py)
+            aire_malo = sensor_data.get('air_quality_bad', False)
             if ALERT_CONFIG['BUZZER_ON_BAD_AIR']:
-                self.sensor_manager.control_buzzer(buzzer_state)
+                self.sensor_manager.control_buzzer(aire_malo)  # Buzzer ON si el aire es malo
+            
+            # Agregar estado del buzzer a los datos
+            sensor_data['buzzer_state'] = aire_malo
             
             # Mostrar en display
             self.display_manager.display_sensor_data(sensor_data)
@@ -75,8 +78,8 @@ class SIEPASystem:
             # Enviar por MQTT si está habilitado
             if self.mqtt_manager and self.mqtt_manager.is_connected():
                 self.mqtt_manager.publish_sensor_data(sensor_data)
-                if buzzer_state:
-                    self.mqtt_manager.publish_buzzer_state(buzzer_state)
+                # Publicar estado del buzzer
+                self.mqtt_manager.publish_buzzer_state(aire_malo)
             
             # Esperar antes de la siguiente lectura
             time.sleep(SENSOR_CONFIG['READ_INTERVAL'])

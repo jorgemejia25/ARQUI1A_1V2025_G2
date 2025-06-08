@@ -81,12 +81,22 @@ export const useMqtt = (
     const topicParts = topic.split("/");
     const sensorType = topicParts[topicParts.length - 1];
 
+    // Si el valor ya viene con formato del backend (con sensor_type), usarlo directamente
+    if (typeof value === "object" && value.sensor_type) {
+      return {
+        unidad: value.unidad || "",
+        sensor_type: value.sensor_type,
+        evaluationType: sensorType,
+      };
+    }
+
+    // Fallback para compatibilidad con formato anterior
     switch (sensorType) {
       case "temperature":
         return {
           unidad: "°C",
           sensor_type: "Temperatura",
-          evaluationType: "temperature", // Para usar en evaluateRisk
+          evaluationType: "temperature",
         };
       case "humidity":
         return {
@@ -116,13 +126,13 @@ export const useMqtt = (
         return {
           unidad: value ? "Activado" : "Desactivado",
           sensor_type: "Buzzer",
-          evaluationType: null, // No evaluar riesgos
+          evaluationType: null,
         };
       case "status":
         return {
           unidad: "Estado",
           sensor_type: "Estado del Sistema",
-          evaluationType: null, // No evaluar riesgos
+          evaluationType: null,
         };
       default:
         return {
@@ -230,20 +240,36 @@ export const useMqtt = (
             parsedData
           );
 
-          const sensorValue =
-            typeof parsedData === "object"
-              ? parsedData.state !== undefined
-                ? parsedData.state
-                : parsedData.value !== undefined
-                  ? parsedData.value
-                  : JSON.stringify(parsedData)
-              : parsedData;
+          // Si el mensaje viene del nuevo formato del backend
+          let sensorValue, sensorUnit, timestamp;
+          if (
+            typeof parsedData === "object" &&
+            parsedData.valor !== undefined
+          ) {
+            sensorValue = parsedData.valor;
+            sensorUnit = parsedData.unidad || unidad;
+            timestamp = parsedData.timestamp
+              ? new Date(parsedData.timestamp * 1000).toLocaleString()
+              : new Date().toLocaleString();
+          } else {
+            // Formato anterior
+            sensorValue =
+              typeof parsedData === "object"
+                ? parsedData.state !== undefined
+                  ? parsedData.state
+                  : parsedData.value !== undefined
+                    ? parsedData.value
+                    : JSON.stringify(parsedData)
+                : parsedData;
+            sensorUnit = unidad;
+            timestamp = new Date().toLocaleString();
+          }
 
           newSensorData = {
             topic: receivedTopic,
             valor: sensorValue,
-            unidad,
-            timestamp: new Date().toLocaleString(),
+            unidad: sensorUnit,
+            timestamp: timestamp,
             sensor_type,
           };
 
@@ -257,7 +283,9 @@ export const useMqtt = (
                 evalValue = parsedData ? 1 : 0;
               } else if (typeof sensorValue === "string") {
                 evalValue =
-                  sensorValue.toLowerCase() === "malo" || sensorValue === "1"
+                  sensorValue.toLowerCase() === "malo" ||
+                  sensorValue.toLowerCase() === "mala" ||
+                  sensorValue === "1"
                     ? 1
                     : 0;
               }

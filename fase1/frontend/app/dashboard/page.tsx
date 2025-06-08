@@ -31,56 +31,144 @@ import {
   Thermometer,
   Wind,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import AlertsPanel from "@/components/organisms/AlertsPanel";
 import EnergyConsumptionPanel from "@/components/organisms/EnergyConsumptionPanel";
 import StatusOverviewGrid from "@/components/organisms/StatusOverviewGrid";
+import { useMqtt } from "../mqtt-sensors/useMqtt";
+
+type StatusItem = {
+  id: string;
+  label: string;
+  value: string;
+  trend: string;
+  icon: any;
+  color: "success" | "danger" | "warning" | "primary";
+};
 
 export default function Dashboard() {
-  // Mock data for demonstration
-  const statusData = [
+  const [statusData, setStatusData] = useState<StatusItem[]>([
     {
       id: "temperature_humidity",
       label: "Temperatura y Humedad",
-      value: "24.5°C",
-      trend: "Normal",
+      value: "-- °C / -- %",
+      trend: "Esperando datos...",
       icon: Thermometer,
-      color: "success" as const,
+      color: "warning",
     },
     {
       id: "air_quality",
       label: "Calidad del Aire",
-      value: "Buena",
-      trend: "Estable",
+      value: "Esperando...",
+      trend: "Esperando datos...",
       icon: Wind,
-      color: "success" as const,
+      color: "warning",
     },
     {
       id: "lighting",
       label: "Iluminación",
-      value: "450 lux",
-      trend: "Óptimo",
+      value: "Esperando...",
+      trend: "Esperando datos...",
       icon: Lightbulb,
-      color: "primary" as const,
-    },
-    {
-      id: "atmospheric_pressure",
-      label: "Precion Atmosferica",
-      value: "500 hPa",
-      trend: "Óptimo",
-      icon: Cloudy,
-      color: "primary" as const,
+      color: "warning",
     },
     {
       id: "motion_detection",
       label: "Detección de Movimiento",
-      value: "50 cm",
-      trend: "Normal",
+      value: "-- cm",
+      trend: "Esperando datos...",
       icon: Activity,
-      color: "primary" as const,
+      color: "warning",
     },
+  ]);
 
-  ];
+  // Conectar al MQTT para obtener datos reales
+  const { isConnected, sensorData, connectionStatus } = useMqtt(
+    "wss://broker.hivemq.com:8884/mqtt",
+    ["siepa/sensors", "siepa/sensors/+", "siepa/actuators/+"]
+  );
+
+  // Actualizar statusData cuando lleguen nuevos datos del MQTT
+  useEffect(() => {
+    if (sensorData.length > 0) {
+      const latestData: { [key: string]: any } = {};
+
+      // Obtener los datos más recientes de cada sensor
+      sensorData.forEach((data) => {
+        const sensorType = data.sensor_type?.toLowerCase();
+        if (
+          sensorType &&
+          (!latestData[sensorType] ||
+            new Date(data.timestamp) >
+              new Date(latestData[sensorType].timestamp))
+        ) {
+          latestData[sensorType] = data;
+        }
+      });
+
+      setStatusData((prevData) =>
+        prevData.map((item) => {
+          switch (item.id) {
+            case "temperature_humidity":
+              const temp = latestData["temperatura"];
+              const hum = latestData["humedad"];
+              return {
+                ...item,
+                value: `${temp?.valor || "--"} °C / ${hum?.valor || "--"} %`,
+                trend: isConnected ? "En línea" : "Desconectado",
+                color:
+                  temp?.valor && hum?.valor
+                    ? ("success" as const)
+                    : ("warning" as const),
+              };
+
+            case "air_quality":
+              const airQuality = latestData["calidad del aire"];
+              return {
+                ...item,
+                value: airQuality?.valor || "Esperando...",
+                trend: airQuality?.unidad || "Esperando datos...",
+                color:
+                  airQuality?.valor === "BUENA"
+                    ? ("success" as const)
+                    : airQuality?.valor === "MALA"
+                      ? ("danger" as const)
+                      : ("warning" as const),
+              };
+
+            case "lighting":
+              const light = latestData["luz"];
+              return {
+                ...item,
+                value: light?.valor || "Esperando...",
+                trend: light?.unidad || "Esperando datos...",
+                color:
+                  light?.valor === "SI"
+                    ? ("success" as const)
+                    : light?.valor === "NO"
+                      ? ("warning" as const)
+                      : ("warning" as const),
+              };
+
+            case "motion_detection":
+              const distance = latestData["distancia"];
+              return {
+                ...item,
+                value: distance?.valor ? `${distance.valor} cm` : "-- cm",
+                trend: distance ? "Detectando" : "Esperando datos...",
+                color: distance?.valor
+                  ? ("primary" as const)
+                  : ("warning" as const),
+              };
+
+            default:
+              return item;
+          }
+        })
+      );
+    }
+  }, [sensorData, isConnected]);
 
   const energyMetrics = [
     {
@@ -113,29 +201,84 @@ export default function Dashboard() {
     },
   ];
 
-  const alerts = [
+  // Generar alertas basadas en los datos de sensores
+  const [alerts, setAlerts] = useState([
     {
-      id: "temp_alert",
-      title: "Temperatura Elevada",
-      description: "Sensor del aula 205 reporta 28°C",
-      level: "warning" as const,
-      timestamp: "hace 15 min",
+      id: "connection_status",
+      title: "Estado de Conexión",
+      description: `Sistema MQTT: ${connectionStatus}`,
+      level: isConnected ? ("info" as const) : ("danger" as const),
+      timestamp: "ahora",
     },
-    {
-      id: "sensor_offline",
-      title: "Sensor Desconectado",
-      description: "Sensor de humedad en laboratorio 3",
-      level: "danger" as const,
-      timestamp: "hace 1 hora",
-    },
-    {
-      id: "maintenance",
-      title: "Mantenimiento Programado",
-      description: "Sistema HVAC requiere revisión",
-      level: "info" as const,
-      timestamp: "en 2 días",
-    },
-  ];
+  ]);
+
+  // Actualizar alertas basadas en datos de sensores
+  useEffect(() => {
+    const newAlerts = [
+      {
+        id: "connection_status",
+        title: "Estado de Conexión",
+        description: `Sistema MQTT: ${connectionStatus}`,
+        level: isConnected ? ("info" as const) : ("danger" as const),
+        timestamp: "ahora",
+      },
+    ];
+
+    if (sensorData.length > 0) {
+      const latestData: { [key: string]: any } = {};
+
+      // Obtener los datos más recientes de cada sensor
+      sensorData.forEach((data) => {
+        const sensorType = data.sensor_type?.toLowerCase();
+        if (
+          sensorType &&
+          (!latestData[sensorType] ||
+            new Date(data.timestamp) >
+              new Date(latestData[sensorType].timestamp))
+        ) {
+          latestData[sensorType] = data;
+        }
+      });
+
+      // Alerta de calidad del aire
+      const airQuality = latestData["calidad del aire"];
+      if (airQuality?.valor === "MALA") {
+        newAlerts.push({
+          id: "air_quality_alert",
+          title: "Calidad del Aire Mala",
+          description: `Sensor reporta aire malo ${airQuality.unidad}`,
+          level: "danger" as const,
+          timestamp: airQuality.timestamp,
+        });
+      }
+
+      // Alerta de temperatura (si está fuera del rango normal)
+      const temp = latestData["temperatura"];
+      if (temp?.valor && (temp.valor > 30 || temp.valor < 18)) {
+        newAlerts.push({
+          id: "temp_alert",
+          title: temp.valor > 30 ? "Temperatura Elevada" : "Temperatura Baja",
+          description: `Sensor reporta ${temp.valor}°C`,
+          level: "danger" as const,
+          timestamp: temp.timestamp,
+        });
+      }
+
+      // Alerta de buzzer activo
+      const buzzer = latestData["buzzer"];
+      if (buzzer?.valor === "ON") {
+        newAlerts.push({
+          id: "buzzer_alert",
+          title: "Buzzer Activado",
+          description: "Sistema de alerta sonora activo",
+          level: "danger" as const,
+          timestamp: buzzer.timestamp,
+        });
+      }
+    }
+
+    setAlerts(newAlerts);
+  }, [sensorData, isConnected, connectionStatus]);
 
   return (
     <div className="space-y-8">
@@ -143,11 +286,20 @@ export default function Dashboard() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-foreground">
-            Resumen del Sistema
+            Resumen del Sistema SIEPA
           </h1>
           <p className="text-foreground-600 mt-1">
-            Estado actual de los sensores ambientales y consumo energético
+            Estado actual de los sensores ambientales - Conexión MQTT:{" "}
+            {connectionStatus}
           </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <div
+            className={`w-3 h-3 rounded-full ${isConnected ? "bg-green-500" : "bg-red-500"}`}
+          ></div>
+          <span className="text-sm text-foreground-600">
+            {isConnected ? "Conectado" : "Desconectado"}
+          </span>
         </div>
       </div>
 

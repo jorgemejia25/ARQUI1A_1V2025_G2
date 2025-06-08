@@ -62,25 +62,41 @@ class DisplayManager:
         self.write(text)
     
     def display_sensor_data(self, sensor_data: Dict[str, Any]):
-        """Muestra datos de sensores en formato estándar"""
-        self.clear()
+        """Muestra datos de sensores en formato igual que allin.py"""
+        # Mostrar en consola igual que allin.py
+        temp = sensor_data.get('temperature')
+        hum = sensor_data.get('humidity')
+        distance = sensor_data.get('distance')
+        voltaje_ldr = sensor_data.get('light_voltage', 0)
+        voltaje_mq135 = sensor_data.get('air_quality_voltage', 0)
+        hay_luz = sensor_data.get('light', False)
+        aire_malo = sensor_data.get('air_quality_bad', False)
+        buzzer_state = sensor_data.get('buzzer_state', False)
+
+        print("----- Lectura actual -----")
+        print(f"🌡️  Temperatura: {temp or '-'} °C")
+        print(f"💧 Humedad: {hum or '-'} %")
+        print(f"📏 Distancia: {distance} cm")
+        print(f"💡 Luz: {'SI' if hay_luz else 'NO'} ({voltaje_ldr:.2f} V)")
+        print(f"🫁 Calidad del aire: {'MALA' if aire_malo else 'BUENA'} ({voltaje_mq135:.2f} V)")
+        print(f"🔔 Buzzer: {'ON' if buzzer_state else 'OFF'}")
+        print("--------------------------\n")
         
-        # Línea 1: Temperatura y Humedad
-        temp = sensor_data.get('temperature', '-')
-        hum = sensor_data.get('humidity', '-')
-        self.write_at(0, 0, f"T:{temp or '-'}C H:{hum or '-'}%")
-        
-        # Línea 2: Distancia
-        distance = sensor_data.get('distance', '-')
-        self.write_at(1, 0, f"Dist: {distance} cm")
-        
-        # Línea 3: Luz
-        light = sensor_data.get('light', False)
-        self.write_at(2, 0, "Luz: " + ("SI" if light else "NO"))
-        
-        # Línea 4: Calidad del aire
-        air_bad = sensor_data.get('air_quality_bad', False)
-        self.write_at(3, 0, "Aire: " + ("MALO" if air_bad else "BUENO"))
+        # También mostrar en LCD si está disponible
+        if hasattr(self, 'lcd'):
+            self.clear()
+            
+            # Línea 1: Temperatura y Humedad
+            self.write_at(0, 0, f"T:{temp or '-'}C H:{hum or '-'}%")
+            
+            # Línea 2: Distancia
+            self.write_at(1, 0, f"Dist: {distance} cm")
+            
+            # Línea 3: Luz con voltaje
+            self.write_at(2, 0, f"Luz:{'SI' if hay_luz else 'NO'} {voltaje_ldr:.1f}V")
+            
+            # Línea 4: Calidad del aire con voltaje
+            self.write_at(3, 0, f"Aire:{'MALO' if aire_malo else 'OK'} {voltaje_mq135:.1f}V")
     
     def display_message(self, message: str):
         """Muestra un mensaje simple"""

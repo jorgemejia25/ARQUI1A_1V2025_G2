@@ -60,21 +60,11 @@ Ejemplos de uso:
         system = SIEPASystem(mode=args.mode, enable_mqtt=args.mqtt)
         system.start()
         
-    except ImportError as e:
-        print(f"❌ Error al importar módulos: {e}")
-        print("💡 Verifique que todas las dependencias estén instaladas")
-        if args.mode == 'real':
-            print("💡 Para modo 'real' necesita las librerías de Raspberry Pi")
-            print("💡 Use --mode testing para pruebas sin hardware")
-        sys.exit(1)
-        
+
     except KeyboardInterrupt:
         print("\n\n🛑 Programa interrumpido por el usuario")
         sys.exit(0)
-        
-    except Exception as e:
-        print(f"❌ Error inesperado: {e}")
-        sys.exit(1)
+
 
 if __name__ == "__main__":
     main() 

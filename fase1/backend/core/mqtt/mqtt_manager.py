@@ -138,39 +138,85 @@ class MQTTManager:
             return False
     
     def _publish_individual_readings(self, sensor_data: Dict[str, Any]):
-        """Publica lecturas individuales por tópico"""
-        readings = {
-            'TEMPERATURE': sensor_data.get('temperature'),
-            'HUMIDITY': sensor_data.get('humidity'),
-            'DISTANCE': sensor_data.get('distance'),
-            'LIGHT': sensor_data.get('light'),
-            'AIR_QUALITY': sensor_data.get('air_quality_bad')
-        }
+        """Publica lecturas individuales por tópico - formato igual que allin.py"""
+        # Temperatura
+        if sensor_data.get('temperature') is not None:
+            temp_data = {
+                'valor': sensor_data.get('temperature'),
+                'unidad': '°C',
+                'timestamp': time.time(),
+                'sensor_type': 'Temperatura'
+            }
+            self._publish_topic_data('TEMPERATURE', temp_data)
         
-        for topic_key, value in readings.items():
-            if value is not None:
-                topic = self.config['TOPICS'][topic_key]
-                try:
-                    result = self.client.publish(topic, str(value), qos=self.config['QOS'])
-                    if result.rc == mqtt.MQTT_ERR_SUCCESS:
-                        print(f"📤 {topic}: {value}")
-                    else:
-                        print(f"❌ Error publicando {topic}: {result.rc}")
-                except Exception as e:
-                    print(f"❌ Error publicando {topic}: {e}")
+        # Humedad
+        if sensor_data.get('humidity') is not None:
+            hum_data = {
+                'valor': sensor_data.get('humidity'),
+                'unidad': '%',
+                'timestamp': time.time(),
+                'sensor_type': 'Humedad'
+            }
+            self._publish_topic_data('HUMIDITY', hum_data)
+        
+        # Distancia
+        if sensor_data.get('distance') is not None:
+            dist_data = {
+                'valor': sensor_data.get('distance'),
+                'unidad': 'cm',
+                'timestamp': time.time(),
+                'sensor_type': 'Distancia'
+            }
+            self._publish_topic_data('DISTANCE', dist_data)
+        
+        # Luz (con voltaje)
+        if sensor_data.get('light') is not None:
+            light_data = {
+                'valor': 'SI' if sensor_data.get('light') else 'NO',
+                'unidad': f"({sensor_data.get('light_voltage', 0):.2f} V)",
+                'timestamp': time.time(),
+                'sensor_type': 'Luz'
+            }
+            self._publish_topic_data('LIGHT', light_data)
+        
+        # Calidad del aire (con voltaje)
+        if sensor_data.get('air_quality_bad') is not None:
+            air_data = {
+                'valor': 'MALA' if sensor_data.get('air_quality_bad') else 'BUENA',
+                'unidad': f"({sensor_data.get('air_quality_voltage', 0):.2f} V)",
+                'timestamp': time.time(),
+                'sensor_type': 'Calidad del Aire'
+            }
+            self._publish_topic_data('AIR_QUALITY', air_data)
+    
+    def _publish_topic_data(self, topic_key: str, data: Dict[str, Any]):
+        """Publica datos en un tópico específico"""
+        topic = self.config['TOPICS'][topic_key]
+        try:
+            payload = json.dumps(data)
+            result = self.client.publish(topic, payload, qos=self.config['QOS'])
+            if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                print(f"📤 {topic}: {data['valor']} {data['unidad']}")
+            else:
+                print(f"❌ Error publicando {topic}: {result.rc}")
+        except Exception as e:
+            print(f"❌ Error publicando {topic}: {e}")
     
     def publish_buzzer_state(self, state: bool) -> bool:
-        """Publica estado del buzzer"""
+        """Publica estado del buzzer - formato igual que allin.py"""
         if not self.connected:
             print("⚠️  MQTT no conectado - no se puede enviar estado del buzzer")
             return False
             
         try:
-            payload = json.dumps({
-                'state': state, 
+            buzzer_data = {
+                'valor': 'ON' if state else 'OFF',
+                'unidad': 'Activado' if state else 'Desactivado',
                 'timestamp': time.time(),
-                'mode': self.mode
-            })
+                'sensor_type': 'Buzzer'
+            }
+            
+            payload = json.dumps(buzzer_data)
             
             result = self.client.publish(
                 self.config['TOPICS']['BUZZER'],
@@ -179,7 +225,7 @@ class MQTTManager:
             )
             
             if result.rc == mqtt.MQTT_ERR_SUCCESS:
-                print(f"📤 Estado buzzer publicado: {state}")
+                print(f"🔔 Buzzer: {buzzer_data['valor']}")
                 return True
             else:
                 print(f"❌ Error publicando estado buzzer: {result.rc}")

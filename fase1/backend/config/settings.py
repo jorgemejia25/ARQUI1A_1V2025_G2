@@ -34,7 +34,7 @@ DISPLAY_CONFIG = {
 
 # ============== CONFIGURACIÓN MQTT ==============
 MQTT_CONFIG = {
-    'BROKER_HOST': 'localhost',  # Broker Mosquitto local
+    'BROKER_HOST': 'broker.hivemq.com',  # Broker HiveMQ público
     'BROKER_PORT': 1883,
     'USERNAME': None,
     'PASSWORD': None,
