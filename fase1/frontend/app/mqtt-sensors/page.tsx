@@ -516,6 +516,44 @@ export default function MqttSensorsPage() {
                 const { icon, name, color } = getSensorDisplayInfo(
                   data.sensor_type || "Sensor"
                 );
+
+                // Verificar si es un mensaje de estado de sensor
+                const isStatusMessage = data.topic.startsWith(
+                  "siepa/status/sensors/"
+                );
+                const sensorType = isStatusMessage
+                  ? data.topic.split("/").pop()
+                  : null;
+                const isEnabled =
+                  isStatusMessage &&
+                  sensorStates[sensorType as keyof typeof sensorStates];
+
+                // No mostrar información detallada si el sensor está deshabilitado
+                if (isStatusMessage && !isEnabled) {
+                  return (
+                    <div
+                      key={index}
+                      className="border rounded-lg p-4 bg-red-50 dark:bg-red-900/20"
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="flex gap-2">
+                          <Chip size="sm" variant="bordered" color="danger">
+                            {icon} {name} - Apagado
+                          </Chip>
+                        </div>
+                        <span className="text-xs text-gray-500">
+                          {data.timestamp}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-600 dark:text-gray-400">
+                          Sensor deshabilitado
+                        </span>
+                      </div>
+                    </div>
+                  );
+                }
+
                 return (
                   <div
                     key={index}
