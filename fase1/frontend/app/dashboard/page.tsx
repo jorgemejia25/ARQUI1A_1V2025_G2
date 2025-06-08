@@ -47,7 +47,18 @@ type StatusItem = {
   color: "success" | "danger" | "warning" | "primary";
 };
 
+type SensorId = 'temperature_humidity' | 'air_quality' | 'lighting' | 'motion_detection';
+
 export default function Dashboard() {
+
+  // Estado inicial de los sensores
+  const [sensorStates, setSensorStates] = useState<Record<SensorId, boolean>>({
+    temperature_humidity: true,
+    air_quality: true,
+    lighting: true,
+    motion_detection: true,
+  });
+
   const [statusData, setStatusData] = useState<StatusItem[]>([
     {
       id: "temperature_humidity",
@@ -84,9 +95,20 @@ export default function Dashboard() {
   ]);
 
   // Conectar al MQTT para obtener datos reales
-  const { isConnected, sensorData, connectionStatus } = useMqtt(
+  const { isConnected, sensorData, connectionStatus, publishCommand } = useMqtt(
     "wss://broker.hivemq.com:8884/mqtt",
-    ["siepa/sensors", "siepa/sensors/+", "siepa/actuators/+"]
+    [
+      "siepa/sensors",
+      "siepa/sensors/+",
+      "siepa/actuators/+",
+      "siepa/status/sensors/+",
+    ],
+    (sensorType: string, enabled: boolean) => {
+      setSensorStates((prev) => ({
+        ...prev,
+        [sensorType]: enabled,
+      }));
+    }
   );
 
   // Actualizar statusData cuando lleguen nuevos datos del MQTT
@@ -280,6 +302,65 @@ export default function Dashboard() {
     setAlerts(newAlerts);
   }, [sensorData, isConnected, connectionStatus]);
 
+  // Add toggle handler
+  const handleTogglePower = (id: string) => {
+    setSensorStates((prev) => {
+      const newState = !prev[id as SensorId];
+      
+      // Mapeo de comandos del dashboard a comandos MQTT
+      const mqttCommands = [];
+      
+      switch (id) {
+        case 'temperature_humidity':
+          mqttCommands.push(
+            { topic: 'siepa/commands/sensors/temperature', enabled: newState },
+            { topic: 'siepa/commands/sensors/humidity', enabled: newState }
+          );
+          break;
+        case 'lighting':
+          mqttCommands.push({ topic: 'siepa/commands/sensors/light', enabled: newState });
+          break;
+        case 'motion_detection':
+          mqttCommands.push({ topic: 'siepa/commands/sensors/distance', enabled: newState });
+          break;
+        default:
+          mqttCommands.push({ topic: `siepa/commands/sensors/${id}`, enabled: newState });
+      }
+
+      // Enviar todos los comandos MQTT necesarios
+      let allCommandsSuccessful = true;
+      mqttCommands.forEach(({ topic, enabled }) => {
+        const payload = {
+          enabled,
+          timestamp: new Date().toISOString(),
+          source: "frontend",
+        };
+
+        const success = publishCommand(topic, payload);
+        if (success) {
+          console.log(`✅ Command sent: ${topic} ${enabled ? "ENABLED" : "DISABLED"}`);
+        } else {
+          console.error(`❌ Error sending command for ${topic}`);
+          allCommandsSuccessful = false;
+        }
+      });
+
+      // Si algún comando falló, revertir explícitamente el estado
+      if (!allCommandsSuccessful) {
+        console.log(`🔄 Reverting state for ${id} due to MQTT command failure`);
+        return {
+          ...prev,
+          [id]: !newState, // Revertir explícitamente al estado opuesto
+        };
+      }
+
+      return {
+        ...prev,
+        [id]: newState,
+      };
+    });
+  };
+
   return (
     <div className="space-y-8">
       {/* Page Header */}
@@ -311,6 +392,8 @@ export default function Dashboard() {
         <StatusOverviewGrid
           statusData={statusData}
           onViewDetails={(id) => console.log("View details for:", id)}
+          sensorStates={sensorStates}
+          onTogglePower={handleTogglePower}
         />
       </section>
 

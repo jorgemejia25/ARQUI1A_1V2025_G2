@@ -38,6 +38,7 @@
 import { ReactElement } from "react";
 import { useState } from "react";
 import StatusCard from "@/components/molecules/StatusCard";
+import { useMqtt } from "@/app/mqtt-sensors/useMqtt";
 
 interface StatusData {
   id: string;
@@ -51,31 +52,18 @@ interface StatusData {
 interface StatusOverviewGridProps {
   statusData: StatusData[];
   onViewDetails?: (id: string) => void;
+  sensorStates: { [id: string]: boolean };
+  onTogglePower: (id: string) => void;
 }
 
 export default function StatusOverviewGrid({
   statusData,
   onViewDetails,
+  sensorStates,
+  onTogglePower,
 }: StatusOverviewGridProps) {
-  // Local state for the power toggle of each sensor card.
-  // This state is not persisted and will reset on reload or navigation.
-
-   const [powerStates, setPowerStates] = useState<{ [id: string]: boolean }>(
-    () => Object.fromEntries(statusData.map((s) => [s.id, true]))
-  );
-    /**
-   * Handles toggling the power state for a specific status card.
-   * @param id - The id of the status card to toggle.
-   */
-
-  const handleTogglePower = (id: string) => {
-    setPowerStates((prev) => ({
-      ...prev,
-      [id]: !prev[id],
-    }));
-  };
-
-  return (    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 lg:gap-6 ">
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 lg:gap-6">
       {statusData.map((status) => (
         <StatusCard
           key={status.id}
@@ -84,11 +72,9 @@ export default function StatusOverviewGrid({
           trend={status.trend}
           icon={status.icon}
           color={status.color}
-          onViewDetails={
-            onViewDetails ? () => onViewDetails(status.id) : undefined
-          }
-          powerOn={powerStates[status.id]}
-          onTogglePower={() => handleTogglePower(status.id)}
+          onViewDetails={onViewDetails ? () => onViewDetails(status.id) : undefined}
+          powerOn={sensorStates[status.id]}
+          onTogglePower={() => onTogglePower(status.id)}
         />
       ))}
     </div>

@@ -97,8 +97,11 @@ export default function StatusCard({
 
         {/* Power Toggle Button */}
         {typeof powerOn === "boolean" && onTogglePower && (
-          <PowerToggleButton isOn={powerOn} onToggle={onTogglePower} />
-        )}
+        <PowerToggleButton 
+          isOn={powerOn} 
+          onToggle={onTogglePower}
+        />
+      )}
       </CardBody>
     </Card>
   );
