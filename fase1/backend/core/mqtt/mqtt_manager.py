@@ -138,56 +138,94 @@ class MQTTManager:
             return False
     
     def _publish_individual_readings(self, sensor_data: Dict[str, Any]):
-        """Publica lecturas individuales por tópico - formato igual que allin.py"""
+        """Publica lecturas individuales por tópico - formato mejorado para frontend"""
+        current_timestamp = time.time()
+        
         # Temperatura
         if sensor_data.get('temperature') is not None:
             temp_data = {
-                'valor': sensor_data.get('temperature'),
+                'valor': round(sensor_data.get('temperature'), 2),
                 'unidad': '°C',
-                'timestamp': time.time(),
-                'sensor_type': 'Temperatura'
+                'timestamp': current_timestamp,
+                'sensor_type': 'Temperatura',
+                'evaluationType': 'temperature',
+                'evalValue': sensor_data.get('temperature')
             }
             self._publish_topic_data('TEMPERATURE', temp_data)
         
         # Humedad
         if sensor_data.get('humidity') is not None:
             hum_data = {
-                'valor': sensor_data.get('humidity'),
+                'valor': round(sensor_data.get('humidity'), 2),
                 'unidad': '%',
-                'timestamp': time.time(),
-                'sensor_type': 'Humedad'
+                'timestamp': current_timestamp,
+                'sensor_type': 'Humedad',
+                'evaluationType': 'humidity',
+                'evalValue': sensor_data.get('humidity')
             }
             self._publish_topic_data('HUMIDITY', hum_data)
         
         # Distancia
         if sensor_data.get('distance') is not None:
             dist_data = {
-                'valor': sensor_data.get('distance'),
+                'valor': round(sensor_data.get('distance'), 2),
                 'unidad': 'cm',
-                'timestamp': time.time(),
-                'sensor_type': 'Distancia'
+                'timestamp': current_timestamp,
+                'sensor_type': 'Distancia',
+                'evaluationType': 'distance',
+                'evalValue': sensor_data.get('distance')
             }
             self._publish_topic_data('DISTANCE', dist_data)
         
-        # Luz (con voltaje)
-        if sensor_data.get('light') is not None:
+        # Luz (con lux y voltaje)
+        if sensor_data.get('light_lux') is not None:
             light_data = {
-                'valor': 'SI' if sensor_data.get('light') else 'NO',
-                'unidad': f"({sensor_data.get('light_voltage', 0):.2f} V)",
-                'timestamp': time.time(),
-                'sensor_type': 'Luz'
+                'valor': round(sensor_data.get('light_lux', 0), 1),
+                'unidad': 'lux',
+                'timestamp': current_timestamp,
+                'sensor_type': 'Luz',
+                'evaluationType': 'light',
+                'evalValue': sensor_data.get('light_lux', 0),
+                'detectada': sensor_data.get('light', False),
+                'voltage': round(sensor_data.get('light_voltage', 0), 3),
+                'extra_data': {
+                    'lux_value': sensor_data.get('light_lux', 0),
+                    'detection_status': sensor_data.get('light', False),
+                    'raw_voltage': sensor_data.get('light_voltage', 0)
+                }
             }
             self._publish_topic_data('LIGHT', light_data)
         
-        # Calidad del aire (con voltaje)
-        if sensor_data.get('air_quality_bad') is not None:
+        # Calidad del aire (con ppm y voltaje)
+        if sensor_data.get('air_quality_ppm') is not None:
             air_data = {
-                'valor': 'MALA' if sensor_data.get('air_quality_bad') else 'BUENA',
-                'unidad': f"({sensor_data.get('air_quality_voltage', 0):.2f} V)",
-                'timestamp': time.time(),
-                'sensor_type': 'Calidad del Aire'
+                'valor': round(sensor_data.get('air_quality_ppm', 0), 1),
+                'unidad': 'ppm',
+                'timestamp': current_timestamp,
+                'sensor_type': 'Calidad del Aire',
+                'evaluationType': 'air_quality',
+                'evalValue': sensor_data.get('air_quality_ppm', 0),
+                'malo': sensor_data.get('air_quality_bad', False),
+                'voltage': round(sensor_data.get('air_quality_voltage', 0), 3),
+                'extra_data': {
+                    'ppm_value': sensor_data.get('air_quality_ppm', 0),
+                    'bad_air_status': sensor_data.get('air_quality_bad', False),
+                    'raw_voltage': sensor_data.get('air_quality_voltage', 0)
+                }
             }
             self._publish_topic_data('AIR_QUALITY', air_data)
+        
+        # Presión (nuevo sensor BMP280)
+        if sensor_data.get('pressure') is not None:
+            pressure_data = {
+                'valor': round(sensor_data.get('pressure'), 1),
+                'unidad': 'hPa',
+                'timestamp': current_timestamp,
+                'sensor_type': 'Presión',
+                'evaluationType': 'pressure',
+                'evalValue': sensor_data.get('pressure')
+            }
+            self._publish_topic_data('PRESSURE', pressure_data)
     
     def _publish_topic_data(self, topic_key: str, data: Dict[str, Any]):
         """Publica datos en un tópico específico"""
@@ -233,6 +271,41 @@ class MQTTManager:
                 
         except Exception as e:
             print(f"❌ Error publicando estado buzzer: {e}")
+            return False
+    
+    def publish_led_status(self, led_states: Dict[str, bool]) -> bool:
+        """Publica estado de los LEDs de alerta"""
+        if not self.connected:
+            print("⚠️  MQTT no conectado - no se puede enviar estado de LEDs")
+            return False
+            
+        try:
+            led_data = {
+                'led_temperature': led_states.get('temperature', False),
+                'led_humidity': led_states.get('humidity', False),
+                'led_light': led_states.get('light', False),
+                'led_air_quality': led_states.get('air_quality', False),
+                'timestamp': time.time(),
+                'mode': self.mode
+            }
+            
+            payload = json.dumps(led_data)
+            
+            result = self.client.publish(
+                self.config['TOPICS']['LEDS'],
+                payload,
+                qos=self.config['QOS']
+            )
+            
+            if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                print(f"💡 LEDs: {sum(led_states.values())} activos")
+                return True
+            else:
+                print(f"❌ Error publicando estado LEDs: {result.rc}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error publicando estado LEDs: {e}")
             return False
     
     def publish_sensor_status(self, sensor_states: Dict[str, bool]) -> bool:

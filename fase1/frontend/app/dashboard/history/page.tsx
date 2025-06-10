@@ -1,135 +1,161 @@
 "use client";
 
+import { Card, CardBody, CardHeader } from "@heroui/card";
 import {
-  LineChart,
+  CartesianGrid,
+  Legend,
   Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
 } from "recharts";
-import { useEffect, useState } from "react";
-import { useSystemStore, mapSensorType } from "./useSystemStore";
+import { useCallback, useEffect, useState } from "react";
 
-import { Card, CardBody, CardHeader } from "@heroui/card";
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { useMqtt } from "@/app/mqtt-sensors/useMqtt";
+import { Switch } from "@heroui/switch";
+import { useMqttContext } from "@/lib/providers/MqttProvider";
+import { useSystemStore } from "@/lib/store/useSystemStore";
 
 // Tipos de datos para las gráficas
 type ChartEntry = {
   time: string;
   value: number;
+  timestamp: Date;
 };
 
-export default function HistoryDashboardPage() {
-  // Hooks del sistema
-  const { chartData, addChartData, getChartData, clearChartData } =
-    useSystemStore();
+// Función auxiliar para mapear nombres de sensores
+function mapSensorType(sensorType: string): string {
+  const mappings: Record<string, string> = {
+    temperatura: "temperature",
+    humedad: "humidity",
+    luz: "light",
+    ldr: "light",
+    co2: "air_quality",
+    "calidad del aire": "air_quality",
+    presion: "pressure",
+    presión: "pressure",
+    distancia: "distance",
+    temperature: "temperature",
+    humidity: "humidity",
+    light: "light",
+    air_quality: "air_quality",
+    pressure: "pressure",
+    distance: "distance",
+  };
 
-  // Hook MQTT para datos en tiempo real
-  const { isConnected, sensorData } = useMqtt(
-    "wss://broker.hivemq.com:8884/mqtt",
-    [
-      "siepa/sensors",
-      "siepa/sensors/+",
-      "siepa/actuators/+",
-      "siepa/status/sensors/+",
-    ]
-  );
+  return mappings[sensorType.toLowerCase()] || sensorType;
+}
+
+export default function HistoryDashboardPage() {
+  // Hooks del sistema - ahora todo desde el store global
+  const {
+    chartData,
+    getChartData,
+    clearChartData,
+    sensorData,
+    status,
+    checkSystemActivity,
+  } = useSystemStore();
+
+  // Usar el contexto MQTT global
+  const { isConnected: mqttConnected, connectionStatus: mqttStatus } =
+    useMqttContext();
 
   // Estado para datos formateados para las gráficas
   const [formattedChartData, setFormattedChartData] = useState<{
     [key: string]: ChartEntry[];
   }>({});
 
-  // Efecto para procesar datos MQTT y agregarlos al store
+  // Estado para controlar si los datos necesitan actualización
+  const [needsUpdate, setNeedsUpdate] = useState(false);
+  const [lastUpdateTime, setLastUpdateTime] = useState<Date | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+
+  // Monitor de actividad del sistema (verificar cada 5 segundos)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      checkSystemActivity();
+      // Marcar que necesita actualización si hay nuevos datos
+      setNeedsUpdate(true);
+    }, 5000); // Reducido para mejor responsividad
+
+    return () => clearInterval(interval);
+  }, [checkSystemActivity]);
+
+  // Detectar cuando hay nuevos datos MQTT
   useEffect(() => {
     if (sensorData.length > 0) {
-      const latestData = sensorData[sensorData.length - 1];
-
-      // Procesar datos completos del sistema
-      if (latestData.complete_data) {
-        const timestamp = new Date(latestData.timestamp);
-
-        Object.entries(latestData.complete_data).forEach(([key, value]) => {
-          if (key === "timestamp" || key === "mode" || key === "system") return;
-
-          let sensorType = "";
-          let numericValue = 0;
-          let unit = "";
-
-          switch (key) {
-            case "temperature":
-              sensorType = "temperature";
-              numericValue = parseFloat(value as string);
-              unit = "°C";
-              break;
-            case "humidity":
-              sensorType = "humidity";
-              numericValue = parseFloat(value as string);
-              unit = "%";
-              break;
-            case "distance":
-              sensorType = "distance";
-              numericValue = parseFloat(value as string);
-              unit = "cm";
-              break;
-            case "light":
-              sensorType = "light";
-              numericValue = value ? 1 : 0; // Convertir boolean a numérico
-              unit = "estado";
-              break;
-            case "air_quality_bad":
-              sensorType = "co2";
-              numericValue = value ? 1 : 0; // Convertir boolean a numérico
-              unit = "estado";
-              break;
-          }
-
-          if (sensorType && !isNaN(numericValue)) {
-            addChartData(sensorType, numericValue, unit, timestamp);
-          }
-        });
-      }
-
-      // Procesar datos individuales de sensores
-      if (latestData.sensor_type && latestData.valor) {
-        const mappedType = mapSensorType(latestData.sensor_type);
-        const timestamp = new Date(latestData.timestamp);
-        const value = parseFloat(latestData.valor);
-
-        if (!isNaN(value)) {
-          addChartData(mappedType, value, latestData.unidad || "", timestamp);
-        }
-      }
+      setNeedsUpdate(true);
     }
-  }, [sensorData, addChartData]);
+  }, [sensorData.length]);
 
-  // Formatear datos para las gráficas
-  useEffect(() => {
+  // Función para actualizar las gráficas manualmente
+  const updateCharts = useCallback(() => {
     const formatted: { [key: string]: ChartEntry[] } = {};
 
     Object.keys(chartData).forEach((sensorType) => {
-      const data = getChartData(sensorType, 20);
-      formatted[sensorType] = data.map((point) => ({
-        time: new Date(point.x).toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-        }),
-        value: point.y,
-      }));
+      const data = getChartData(sensorType, 30); // Aumentado a 30 puntos
+      formatted[sensorType] = data
+        .map((point) => ({
+          time: new Date(point.x).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+          }),
+          value: point.y,
+          timestamp: new Date(point.x),
+        }))
+        .reverse(); // Mostrar más recientes al final
     });
 
     setFormattedChartData(formatted);
+    setNeedsUpdate(false);
+    setLastUpdateTime(new Date());
   }, [chartData, getChartData]);
+
+  // Actualización inicial
+  useEffect(() => {
+    updateCharts();
+  }, []);
+
+  // Auto-refresh cuando está habilitado
+  useEffect(() => {
+    if (autoRefresh && needsUpdate) {
+      updateCharts();
+    }
+  }, [autoRefresh, needsUpdate, updateCharts]);
 
   // Función para obtener datos de un sensor específico
   const getSensorChartData = (sensorType: string) => {
     return formattedChartData[sensorType] || [];
+  };
+
+  // Función para obtener el último valor de un sensor
+  const getLastValue = (sensorType: string) => {
+    const data = getSensorChartData(sensorType);
+    if (data.length === 0) return null;
+    const lastPoint = data[data.length - 1];
+    return {
+      value: lastPoint.value,
+      time: lastPoint.timestamp.toLocaleTimeString(),
+      date: lastPoint.timestamp.toLocaleDateString(),
+    };
+  };
+
+  // Función para obtener la unidad de un sensor
+  const getSensorUnit = (sensorType: string) => {
+    const units: Record<string, string> = {
+      temperature: "°C",
+      humidity: "%",
+      light: "lux",
+      air_quality: "ppm",
+      pressure: "hPa",
+      distance: "cm",
+    };
+    return units[sensorType] || "";
   };
 
   // Función para combinar temperatura y humedad
@@ -137,42 +163,133 @@ export default function HistoryDashboardPage() {
     const tempData = getSensorChartData("temperature");
     const humidityData = getSensorChartData("humidity");
 
-    const combined = tempData.map((temp, index) => ({
-      time: temp.time,
-      temperatura: temp.value,
-      humedad: humidityData[index]?.value || 0,
-    }));
+    const maxLength = Math.max(tempData.length, humidityData.length);
+    const combined = [];
+
+    for (let i = 0; i < maxLength; i++) {
+      combined.push({
+        time: tempData[i]?.time || humidityData[i]?.time || "",
+        temperatura: tempData[i]?.value || 0,
+        humedad: humidityData[i]?.value || 0,
+      });
+    }
 
     return combined;
+  };
+
+  // Componente para mostrar el último valor de un sensor
+  const LastValueChip = ({ sensorType }: { sensorType: string }) => {
+    const lastValue = getLastValue(sensorType);
+    const unit = getSensorUnit(sensorType);
+
+    if (!lastValue) return null;
+
+    return (
+      <div className="flex flex-col gap-1">
+        <Chip size="sm" variant="bordered" color="success">
+          Último: {lastValue.value}
+          {unit}
+        </Chip>
+        <span className="text-xs text-gray-500">
+          {lastValue.time} - {lastValue.date}
+        </span>
+      </div>
+    );
   };
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold text-foreground">
-          Reporte Histórico
+          📈 Reporte Histórico
         </h1>
-        <div className="flex gap-2 items-center">
-          <Chip color={isConnected ? "success" : "danger"} variant="flat">
-            {isConnected ? "🟢 MQTT Conectado" : "🔴 MQTT Desconectado"}
+        <div className="flex gap-2 items-center flex-wrap">
+          <Chip color={mqttConnected ? "success" : "danger"} variant="flat">
+            {mqttConnected ? "🟢 MQTT Conectado" : "🔴 MQTT Desconectado"}
           </Chip>
-          <Button
+          <Chip
+            color={status.isSystemActive ? "success" : "warning"}
+            variant="flat"
             size="sm"
-            variant="bordered"
-            onClick={() => clearChartData()}
-            disabled={Object.keys(chartData).length === 0}
           >
-            Limpiar Gráficas
-          </Button>
+            {status.isSystemActive ? "📊 Sistema Activo" : "⏳ Sin Datos"}
+          </Chip>
+          {status.isSyncing && (
+            <Chip color="primary" variant="flat" size="sm">
+              🔄 Sincronizando...
+            </Chip>
+          )}
+          {needsUpdate && !autoRefresh && (
+            <Chip color="warning" variant="flat" size="sm">
+              ⚠️ Datos nuevos disponibles
+            </Chip>
+          )}
+          {autoRefresh && (
+            <Chip color="success" variant="flat" size="sm">
+              🔄 Auto-actualización activa
+            </Chip>
+          )}
+          {lastUpdateTime && (
+            <span className="text-xs text-gray-500">
+              Última actualización: {lastUpdateTime.toLocaleTimeString()}
+            </span>
+          )}
         </div>
       </div>
 
-      {!isConnected && (
+      {/* Controles de actualización */}
+      <Card>
+        <CardBody>
+          <div className="flex justify-between items-center">
+            <div className="flex gap-4 items-center">
+              <Button
+                color="primary"
+                onClick={updateCharts}
+                disabled={
+                  (!needsUpdate && Object.keys(chartData).length === 0) ||
+                  autoRefresh
+                }
+              >
+                🔄 Actualizar Gráficas
+              </Button>
+              <Button
+                size="sm"
+                variant="bordered"
+                onClick={() => clearChartData()}
+                disabled={Object.keys(chartData).length === 0}
+              >
+                🗑️ Limpiar Todas las Gráficas
+              </Button>
+              <div className="flex items-center gap-2">
+                <Switch
+                  size="sm"
+                  isSelected={autoRefresh}
+                  onValueChange={setAutoRefresh}
+                  color="success"
+                />
+                <span className="text-sm text-gray-600">Auto-actualizar</span>
+              </div>
+            </div>
+            <div className="flex gap-4 text-sm text-gray-600">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                <span>{Object.keys(chartData).length} sensores con datos</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                <span>{sensorData.length} mensajes MQTT recibidos</span>
+              </div>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+
+      {!mqttConnected && (
         <Card>
           <CardBody>
             <div className="text-center py-4">
               <p className="text-warning">
-                ⚠️ Sin conexión MQTT - Mostrando datos simulados
+                ⚠️ Sin conexión MQTT - No se reciben datos en tiempo real
               </p>
               <p className="text-sm text-gray-500 mt-2">
                 Conecte a MQTT para ver datos en tiempo real del sistema SIEPA
@@ -182,148 +299,248 @@ export default function HistoryDashboardPage() {
         </Card>
       )}
 
+      {Object.keys(formattedChartData).length === 0 && (
+        <Card>
+          <CardBody>
+            <div className="text-center py-8">
+              <p className="text-lg text-gray-500 mb-2">
+                📈 No hay datos de historial disponibles
+              </p>
+              <p className="text-sm text-gray-400">
+                Los datos aparecerán aquí cuando el sistema SIEPA publique
+                información y presione "Actualizar Gráficas"
+              </p>
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
       {/* Temperatura y humedad */}
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center w-full">
-            <h2 className="text-xl font-semibold text-foreground">
-              🌡️ Temperatura y Humedad
-            </h2>
-            <Chip size="sm" variant="bordered">
-              {getTempHumidityData().length} puntos
-            </Chip>
-          </div>
-        </CardHeader>
-        <CardBody>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={getTempHumidityData()}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="time" />
-              <YAxis yAxisId="left" unit=" °C" />
-              <YAxis yAxisId="right" orientation="right" unit=" %" />
-              <Tooltip />
-              <Legend />
-              <Line
-                yAxisId="left"
-                type="monotone"
-                dataKey="temperatura"
-                stroke="#6366f1"
-                name="Temperatura"
-                dot={false}
-                strokeWidth={2}
-              />
-              <Line
-                yAxisId="right"
-                type="monotone"
-                dataKey="humedad"
-                stroke="#10b981"
-                name="Humedad"
-                dot={false}
-                strokeWidth={2}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </CardBody>
-      </Card>
+      {(getSensorChartData("temperature").length > 0 ||
+        getSensorChartData("humidity").length > 0) && (
+        <Card>
+          <CardHeader>
+            <div className="flex justify-between items-center w-full">
+              <h2 className="text-xl font-semibold text-foreground">
+                🌡️ Temperatura y Humedad
+              </h2>
+              <div className="flex gap-4 items-center">
+                <LastValueChip sensorType="temperature" />
+                <LastValueChip sensorType="humidity" />
+                <Chip size="sm" variant="bordered">
+                  {getTempHumidityData().length} puntos
+                </Chip>
+              </div>
+            </div>
+          </CardHeader>
+          <CardBody>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={getTempHumidityData()}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="time"
+                  tick={{ fontSize: 12 }}
+                  interval="preserveStartEnd"
+                />
+                <YAxis tick={{ fontSize: 12 }} />
+                <Tooltip
+                  formatter={(value, name) => [
+                    `${value}${name === "temperatura" ? "°C" : "%"}`,
+                    name === "temperatura" ? "Temperatura" : "Humedad",
+                  ]}
+                />
+                <Legend />
+                <Line
+                  type="monotone"
+                  dataKey="temperatura"
+                  stroke="#6366f1"
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  name="Temperatura"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="humedad"
+                  stroke="#10b981"
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  name="Humedad"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardBody>
+        </Card>
+      )}
 
       {/* Iluminación */}
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center w-full">
-            <h2 className="text-xl font-semibold text-foreground">
-              💡 Iluminación (LDR)
-            </h2>
-            <Chip size="sm" variant="bordered">
-              {getSensorChartData("light").length} puntos
-            </Chip>
-          </div>
-        </CardHeader>
-        <CardBody>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={getSensorChartData("light")}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="time" />
-              <YAxis unit=" lx" />
-              <Tooltip />
-              <Legend />
-              <Line
-                type="monotone"
-                dataKey="value"
-                stroke="#facc15"
-                name="Luz"
-                dot={false}
-                strokeWidth={2}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </CardBody>
-      </Card>
+      {getSensorChartData("light").length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex justify-between items-center w-full">
+              <h2 className="text-xl font-semibold text-foreground">
+                💡 Nivel de Luz
+              </h2>
+              <div className="flex gap-4 items-center">
+                <LastValueChip sensorType="light" />
+                <Chip size="sm" variant="bordered">
+                  {getSensorChartData("light").length} puntos
+                </Chip>
+              </div>
+            </div>
+          </CardHeader>
+          <CardBody>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={getSensorChartData("light")}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="time"
+                  tick={{ fontSize: 12 }}
+                  interval="preserveStartEnd"
+                />
+                <YAxis tick={{ fontSize: 12 }} />
+                <Tooltip
+                  formatter={(value) => [`${value} lux`, "Nivel de Luz"]}
+                />
+                <Legend />
+                <Line
+                  type="monotone"
+                  dataKey="value"
+                  stroke="#facc15"
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  name="Luz (lux)"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardBody>
+        </Card>
+      )}
 
-      {/* Calidad del aire / CO₂ */}
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center w-full">
-            <h2 className="text-xl font-semibold text-foreground">
-              💨 Calidad del Aire
-            </h2>
-            <Chip size="sm" variant="bordered">
-              {getSensorChartData("co2").length} puntos
-            </Chip>
-          </div>
-        </CardHeader>
-        <CardBody>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={getSensorChartData("co2")}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="time" />
-              <YAxis unit=" estado" />
-              <Tooltip />
-              <Legend />
-              <Line
-                type="monotone"
-                dataKey="value"
-                stroke="#ef4444"
-                name="Calidad del Aire"
-                dot={false}
-                strokeWidth={2}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </CardBody>
-      </Card>
+      {/* Calidad del aire */}
+      {getSensorChartData("air_quality").length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex justify-between items-center w-full">
+              <h2 className="text-xl font-semibold text-foreground">
+                💨 Calidad del Aire (CO2/Gases)
+              </h2>
+              <div className="flex gap-4 items-center">
+                <LastValueChip sensorType="air_quality" />
+                <Chip size="sm" variant="bordered">
+                  {getSensorChartData("air_quality").length} puntos
+                </Chip>
+              </div>
+            </div>
+          </CardHeader>
+          <CardBody>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={getSensorChartData("air_quality")}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="time"
+                  tick={{ fontSize: 12 }}
+                  interval="preserveStartEnd"
+                />
+                <YAxis tick={{ fontSize: 12 }} />
+                <Tooltip formatter={(value) => [`${value} ppm`, "Gases/CO2"]} />
+                <Legend />
+                <Line
+                  type="monotone"
+                  dataKey="value"
+                  stroke="#ef4444"
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  name="Calidad del Aire (ppm)"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardBody>
+        </Card>
+      )}
 
       {/* Distancia */}
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center w-full">
-            <h2 className="text-xl font-semibold text-foreground">
-              📏 Distancia
-            </h2>
-            <Chip size="sm" variant="bordered">
-              {getSensorChartData("distance").length} puntos
-            </Chip>
-          </div>
-        </CardHeader>
-        <CardBody>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={getSensorChartData("distance")}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="time" />
-              <YAxis unit=" cm" />
-              <Tooltip />
-              <Legend />
-              <Line
-                type="monotone"
-                dataKey="value"
-                stroke="#8b5cf6"
-                name="Distancia"
-                dot={false}
-                strokeWidth={2}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </CardBody>
-      </Card>
+      {getSensorChartData("distance").length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex justify-between items-center w-full">
+              <h2 className="text-xl font-semibold text-foreground">
+                📏 Sensor de Distancia
+              </h2>
+              <div className="flex gap-4 items-center">
+                <LastValueChip sensorType="distance" />
+                <Chip size="sm" variant="bordered">
+                  {getSensorChartData("distance").length} puntos
+                </Chip>
+              </div>
+            </div>
+          </CardHeader>
+          <CardBody>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={getSensorChartData("distance")}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="time"
+                  tick={{ fontSize: 12 }}
+                  interval="preserveStartEnd"
+                />
+                <YAxis tick={{ fontSize: 12 }} />
+                <Tooltip formatter={(value) => [`${value} cm`, "Distancia"]} />
+                <Legend />
+                <Line
+                  type="monotone"
+                  dataKey="value"
+                  stroke="#8b5cf6"
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  name="Distancia (cm)"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardBody>
+        </Card>
+      )}
+
+      {/* Presión Atmosférica */}
+      {getSensorChartData("pressure").length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex justify-between items-center w-full">
+              <h2 className="text-xl font-semibold text-foreground">
+                🌬️ Presión Atmosférica
+              </h2>
+              <div className="flex gap-4 items-center">
+                <LastValueChip sensorType="pressure" />
+                <Chip size="sm" variant="bordered">
+                  {getSensorChartData("pressure").length} puntos
+                </Chip>
+              </div>
+            </div>
+          </CardHeader>
+          <CardBody>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={getSensorChartData("pressure")}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="time"
+                  tick={{ fontSize: 12 }}
+                  interval="preserveStartEnd"
+                />
+                <YAxis tick={{ fontSize: 12 }} />
+                <Tooltip formatter={(value) => [`${value} hPa`, "Presión"]} />
+                <Legend />
+                <Line
+                  type="monotone"
+                  dataKey="value"
+                  stroke="#3b82f6"
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  name="Presión Atmosférica (hPa)"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardBody>
+        </Card>
+      )}
 
       {/* Información de estado */}
       <Card>

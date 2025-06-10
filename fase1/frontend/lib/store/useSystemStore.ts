@@ -43,11 +43,27 @@ export interface SensorData {
   evalValue?: number;
 }
 
+// Tipos para el sistema de gráficas/historial
+export interface ChartDataPoint {
+  x: Date; // timestamp
+  y: number; // valor
+}
+
+export interface SensorChartData {
+  sensorType: string;
+  data: ChartDataPoint[];
+  unit: string;
+  color?: string;
+}
+
 interface SystemStore {
   // Estado del sistema
   status: SystemStatus;
   alerts: Alert[];
   sensorData: SensorData[];
+
+  // Datos para gráficas/historial
+  chartData: Record<string, SensorChartData>;
 
   // Configuración de umbrales
   thresholds: Record<string, SensorThreshold>;
@@ -60,6 +76,17 @@ interface SystemStore {
   // Acciones para manejar datos de sensores
   addSensorData: (data: SensorData) => void;
   clearSensorData: () => void;
+
+  // Acciones para manejar datos de gráficas/historial
+  addChartData: (
+    sensorType: string,
+    value: number,
+    unit: string,
+    timestamp?: Date
+  ) => void;
+  getChartData: (sensorType: string, maxPoints?: number) => ChartDataPoint[];
+  getAllChartData: () => SensorChartData[];
+  clearChartData: (sensorType?: string) => void;
 
   // Acciones para manejar alertas
   addAlert: (alert: Omit<Alert, "id" | "timestamp" | "acknowledged">) => void;
@@ -95,14 +122,44 @@ const defaultThresholds: Record<string, SensorThreshold> = {
     warningMax: 200, // Lejos - advertencia
   },
   air_quality: {
-    // Para calidad del aire: 0 = bueno, 1 = malo
-    max: 0, // Si es 1 (malo) = peligroso
-    warningMax: 0, // Sin advertencia, directo a peligro
+    // Para calidad del aire en ppm
+    max: 400, // Por encima de 400 ppm = peligroso
+    warningMax: 300, // Por encima de 300 ppm = advertencia
   },
   light: {
-    // Para sensor de luz: 0 = no detectada, 1 = detectada
-    // No necesita umbrales críticos, solo informativo
+    // Para sensor de luz en lux
+    max: 900, // Por encima de 900 lux = muy brillante (advertencia)
+    warningMax: 700, // Por encima de 700 lux = brillante
   },
+  pressure: {
+    // Para presión atmosférica en hPa
+    min: 1000, // Por debajo de 1000 hPa = baja presión
+    max: 1030, // Por encima de 1030 hPa = alta presión
+    warningMin: 1005, // Advertencia presión baja
+    warningMax: 1025, // Advertencia presión alta
+  },
+};
+
+// Configuración de colores para cada sensor
+const SENSOR_COLORS: Record<string, string> = {
+  temperature: "#6366f1", // violeta
+  humidity: "#10b981", // verde
+  light: "#facc15", // amarillo
+  co2: "#ef4444", // rojo
+  air_quality: "#ef4444", // rojo
+  pressure: "#3b82f6", // azul
+  distance: "#8b5cf6", // morado
+};
+
+// Unidades por defecto para cada sensor
+const SENSOR_UNITS: Record<string, string> = {
+  temperature: "°C",
+  humidity: "%",
+  light: "lux",
+  co2: "ppm",
+  air_quality: "ppm",
+  pressure: "hPa",
+  distance: "cm",
 };
 
 export const useSystemStore = create<SystemStore>()(
@@ -122,6 +179,7 @@ export const useSystemStore = create<SystemStore>()(
         },
         alerts: [],
         sensorData: [],
+        chartData: {},
         thresholds: defaultThresholds,
 
         // Actualizar estado de conexión
@@ -150,29 +208,75 @@ export const useSystemStore = create<SystemStore>()(
         // Agregar datos de sensor
         addSensorData: (data) => {
           set((state) => {
-            const newData = [data, ...state.sensorData.slice(0, 49)];
+            // Verificar duplicados con tolerancia de tiempo más precisa
+            const isDuplicate = state.sensorData.some((existing) => {
+              const timeDiff = Math.abs(
+                new Date(existing.timestamp).getTime() -
+                  new Date(data.timestamp).getTime()
+              );
+              return (
+                existing.topic === data.topic &&
+                existing.valor === data.valor &&
+                timeDiff < 1000 // 1 segundo de tolerancia
+              );
+            });
 
-            // Evaluar riesgo si tenemos la información necesaria
+            if (isDuplicate) {
+              console.log("🔄 Dato duplicado detectado, ignorando...");
+              return state;
+            }
+
+            // Mantener más datos para mejor historial
+            const newData = [data, ...state.sensorData.slice(0, 99)];
+
+            // Procesar timestamp - manejar tanto Unix timestamp como ISO string
+            const getTimestamp = (ts: any): Date => {
+              if (!ts) return new Date();
+              if (typeof ts === "number") {
+                // Si es un timestamp Unix (segundos), convertir a milisegundos
+                return new Date(ts < 1e12 ? ts * 1000 : ts);
+              }
+              return new Date(ts);
+            };
+
+            // Priorizar nuevo formato con evaluationType del backend mejorado
             if (data.evaluationType && data.evalValue !== undefined) {
-              // Llamar evaluateRisk en el próximo tick para evitar problemas de estado
+              const timestamp = getTimestamp(data.timestamp);
               setTimeout(() => {
+                get().addChartData(
+                  data.evaluationType!,
+                  data.evalValue!,
+                  data.unidad,
+                  timestamp
+                );
                 get().evaluateRisk(data.evaluationType!, data.evalValue!);
               }, 0);
             }
-            // Fallback para datos antiguos
+            // Fallback mejorado para datos con sensor_type
             else if (data.sensor_type && typeof data.valor === "number") {
-              // Mapear sensor_type a evaluationType
               const typeMap: Record<string, string> = {
                 Temperatura: "temperature",
                 Humedad: "humidity",
                 Distancia: "distance",
                 "Calidad del Aire": "air_quality",
                 Luz: "light",
+                Presión: "pressure",
+                "Presión Atmosférica": "pressure",
+                "Sensor de Distancia": "distance",
+                "Nivel de Luz": "light",
+                "CO2/Gases": "air_quality",
               };
 
               const evalType = typeMap[data.sensor_type];
               if (evalType) {
+                const timestamp = getTimestamp(data.timestamp);
                 setTimeout(() => {
+                  get().addChartData(
+                    evalType,
+                    data.valor,
+                    data.unidad,
+                    timestamp
+                  );
                   get().evaluateRisk(evalType, data.valor);
                 }, 0);
               }
@@ -198,7 +302,7 @@ export const useSystemStore = create<SystemStore>()(
                 isSyncing: false,
               },
             }));
-          }, 1000);
+          }, 300); // Más rápido para mejor UX
         },
 
         // Limpiar datos de sensores
@@ -206,6 +310,75 @@ export const useSystemStore = create<SystemStore>()(
           set((state) => ({
             sensorData: [],
           }));
+        },
+
+        // Agregar datos a las gráficas
+        addChartData: (sensorType, value, unit, timestamp = new Date()) => {
+          set((state) => {
+            const currentChartData = state.chartData[sensorType] || {
+              sensorType,
+              data: [],
+              unit: unit || SENSOR_UNITS[sensorType] || "",
+              color: SENSOR_COLORS[sensorType],
+            };
+
+            const newDataPoint: ChartDataPoint = {
+              x: timestamp,
+              y: parseFloat(value.toFixed(2)),
+            };
+
+            // Verificar si ya existe un punto muy similar (evitar duplicados)
+            const isDuplicatePoint = currentChartData.data.some((point) => {
+              const timeDiff = Math.abs(
+                point.x.getTime() - timestamp.getTime()
+              );
+              const valueDiff = Math.abs(point.y - newDataPoint.y);
+              return timeDiff < 2000 && valueDiff < 0.1; // 2 segundos y 0.1 de diferencia
+            });
+
+            if (isDuplicatePoint) {
+              return state; // No agregar punto duplicado
+            }
+
+            // Agregar nuevo punto al final y mantener los últimos 100 puntos para mejor historial
+            const updatedData = [...currentChartData.data, newDataPoint]
+              .sort((a, b) => a.x.getTime() - b.x.getTime()) // Ordenar por tiempo
+              .slice(-100); // Mantener los últimos 100 puntos
+
+            return {
+              chartData: {
+                ...state.chartData,
+                [sensorType]: {
+                  ...currentChartData,
+                  data: updatedData,
+                },
+              },
+            };
+          });
+        },
+
+        // Obtener datos para un sensor específico (más recientes primero)
+        getChartData: (sensorType, maxPoints = 20) => {
+          const chartData = get().chartData[sensorType];
+          return chartData ? chartData.data.slice(-maxPoints) : [];
+        },
+
+        // Obtener todos los datos de gráficas
+        getAllChartData: () => {
+          return Object.values(get().chartData);
+        },
+
+        // Limpiar datos de gráficas
+        clearChartData: (sensorType) => {
+          if (sensorType) {
+            set((state) => {
+              const newChartData = { ...state.chartData };
+              delete newChartData[sensorType];
+              return { chartData: newChartData };
+            });
+          } else {
+            set({ chartData: {} });
+          }
         },
 
         // Agregar nueva alerta
@@ -353,9 +526,27 @@ export const useSystemStore = create<SystemStore>()(
                     : `☔ Humedad alta: ${val}% - Ambiente húmedo`;
                 }
               case "air_quality":
-                return type === "danger"
-                  ? `💨 Calidad del aire MALA - ¡Ventilación necesaria inmediatamente!`
-                  : `🌪️ Calidad del aire en observación`;
+                if (type === "danger") {
+                  return `💨 Calidad del aire MALA: ${val} ppm - ¡Ventilación necesaria inmediatamente!`;
+                } else {
+                  return `🌪️ Calidad del aire en observación: ${val} ppm - Monitoreo requerido`;
+                }
+              case "light":
+                if (type === "danger") {
+                  return `☀️ Luz muy intensa: ${val} lux - ¡Posible deslumbramiento!`;
+                } else {
+                  return `💡 Luz brillante: ${val} lux - Nivel elevado detectado`;
+                }
+              case "pressure":
+                if (type === "danger") {
+                  return val < (threshold.min || 0)
+                    ? `⬇️ Presión muy baja: ${val} hPa - Posible mal tiempo`
+                    : `⬆️ Presión muy alta: ${val} hPa - Condiciones atmosféricas inusuales`;
+                } else {
+                  return val < (threshold.warningMin || 0)
+                    ? `📉 Presión baja: ${val} hPa - Cambio atmosférico`
+                    : `📈 Presión alta: ${val} hPa - Monitoreo recomendado`;
+                }
               case "distance":
                 if (type === "danger") {
                   return val < (threshold.min || 0)
@@ -441,6 +632,15 @@ export const useSystemStore = create<SystemStore>()(
         partialize: (state) => ({
           thresholds: state.thresholds,
           alerts: state.alerts.filter((a) => !a.acknowledged), // Solo persistir alertas no reconocidas
+          chartData: Object.fromEntries(
+            Object.entries(state.chartData).map(([key, value]) => [
+              key,
+              {
+                ...value,
+                data: value.data.slice(-20), // Solo persistir los últimos 20 puntos por sensor
+              },
+            ])
+          ),
         }),
       }
     ),
@@ -458,6 +658,7 @@ function getSensorDisplayName(sensorType: string): string {
     distance: "Distancia",
     light: "Luz",
     air_quality: "Calidad del Aire",
+    pressure: "Presión",
   };
   return names[sensorType] || sensorType;
 }

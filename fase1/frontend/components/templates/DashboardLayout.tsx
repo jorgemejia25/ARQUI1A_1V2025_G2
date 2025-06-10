@@ -40,6 +40,8 @@ import { Chip } from "@heroui/chip";
 import DashboardSidebar from "@/components/organisms/DashboardSidebar";
 import ThemeToggle from "@/components/atoms/ThemeToggle";
 import { useSystemStore } from "@/lib/store/useSystemStore";
+import { useAuth } from "@/lib/contexts/AuthContext";
+import { LogOut, User } from "lucide-react";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -52,6 +54,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const { status, alerts } = useSystemStore();
   const activeAlerts = alerts.filter((alert) => !alert.acknowledged);
 
+  // Obtener información de autenticación
+  const { user, logout } = useAuth();
+
   // Define sidebar items directly in the client component
   const sidebarItems = [
     { id: "overview", label: "Resumen", icon: Home, href: "/dashboard" },
@@ -60,12 +65,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       label: "Histórico",
       icon: Leaf,
       href: "/dashboard/history",
-    },
-    {
-      id: "sensors",
-      label: "Sensores",
-      icon: Database,
-      href: "/dashboard/sensors",
     },
     { id: "alerts", label: "Alertas", icon: Bell, href: "/dashboard/alerts" },
   ];
@@ -113,6 +112,14 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             </div>
 
             <div className="flex items-center gap-3">
+              {/* User Info */}
+              <div className="hidden sm:flex items-center gap-2 text-sm">
+                <User className="w-4 h-4 text-default-500" />
+                <span className="text-default-700 font-medium">
+                  {user?.username || "Usuario"}
+                </span>
+              </div>
+
               {/* Theme Switch */}
               <ThemeToggle />
 
@@ -139,6 +146,18 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   </Chip>
                 )}
               </div>
+
+              {/* Logout Button */}
+              <Button
+                isIconOnly
+                variant="light"
+                color="danger"
+                className="w-10 h-10"
+                onPress={logout}
+                title="Cerrar sesión"
+              >
+                <LogOut className="w-5 h-5" />
+              </Button>
             </div>
           </div>
         </header>

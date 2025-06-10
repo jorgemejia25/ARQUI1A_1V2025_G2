@@ -34,7 +34,6 @@ import {
 import { useEffect, useState } from "react";
 
 import AlertsPanel from "@/components/organisms/AlertsPanel";
-import EnergyConsumptionPanel from "@/components/organisms/EnergyConsumptionPanel";
 import StatusOverviewGrid from "@/components/organisms/StatusOverviewGrid";
 import { useMqtt } from "../mqtt-sensors/useMqtt";
 
@@ -51,7 +50,8 @@ type SensorId =
   | "temperature_humidity"
   | "air_quality"
   | "lighting"
-  | "motion_detection";
+  | "motion_detection"
+  | "pressure";
 
 export default function Dashboard() {
   // Estado inicial de los sensores
@@ -60,6 +60,7 @@ export default function Dashboard() {
     air_quality: true,
     lighting: true,
     motion_detection: true,
+    pressure: true,
   });
 
   const [statusData, setStatusData] = useState<StatusItem[]>([
@@ -93,6 +94,14 @@ export default function Dashboard() {
       value: "-- cm",
       trend: "Esperando datos...",
       icon: Activity,
+      color: "warning",
+    },
+    {
+      id: "pressure",
+      label: "Presión Atmosférica",
+      value: "-- hPa",
+      trend: "Esperando datos...",
+      icon: Cloudy,
       color: "warning",
     },
   ]);
@@ -257,6 +266,33 @@ export default function Dashboard() {
                     : ("warning" as const),
               };
 
+            case "pressure":
+              const pressure = latestData["presión"];
+              const pressureEnabled = sensorStates.pressure;
+
+              return {
+                ...item,
+                value: !pressureEnabled
+                  ? "Apagado"
+                  : pressure?.valor
+                    ? `${pressure.valor} hPa`
+                    : "-- hPa",
+                trend: !pressureEnabled
+                  ? "Sensor apagado"
+                  : pressure?.valor
+                    ? `${pressure.valor < 1010 ? "Baja presión" : pressure.valor > 1025 ? "Alta presión" : "Normal"}`
+                    : "Esperando datos...",
+                color: !pressureEnabled
+                  ? ("danger" as const)
+                  : pressure?.valor
+                    ? pressure.valor < 1005 || pressure.valor > 1030
+                      ? ("danger" as const)
+                      : pressure.valor < 1010 || pressure.valor > 1025
+                        ? ("warning" as const)
+                        : ("success" as const)
+                    : ("warning" as const),
+              };
+
             default:
               return item;
           }
@@ -264,37 +300,6 @@ export default function Dashboard() {
       );
     }
   }, [sensorData, isConnected, sensorStates]);
-
-  const energyMetrics = [
-    {
-      id: "lighting_consumption",
-      label: "Iluminación",
-      value: "850 kWh",
-      percentage: 65,
-      color: "primary" as const,
-    },
-    {
-      id: "hvac_consumption",
-      label: "Climatización",
-      value: "1.2 MWh",
-      percentage: 85,
-      color: "warning" as const,
-    },
-    {
-      id: "equipment_consumption",
-      label: "Equipos",
-      value: "450 kWh",
-      percentage: 45,
-      color: "success" as const,
-    },
-    {
-      id: "other_consumption",
-      label: "Otros",
-      value: "200 kWh",
-      percentage: 25,
-      color: "secondary" as const,
-    },
-  ];
 
   // Generar alertas basadas en los datos de sensores
   const [alerts, setAlerts] = useState([
@@ -370,6 +375,30 @@ export default function Dashboard() {
           timestamp: buzzer.timestamp,
         });
       }
+
+      // Alerta de presión atmosférica anómala
+      const pressure = latestData["presión"];
+      if (pressure?.valor && (pressure.valor < 1005 || pressure.valor > 1030)) {
+        newAlerts.push({
+          id: "pressure_alert",
+          title:
+            pressure.valor < 1005 ? "Presión Muy Baja" : "Presión Muy Alta",
+          description: `Sensor reporta ${pressure.valor} hPa - ${pressure.valor < 1005 ? "Posible mal tiempo" : "Condiciones atmosféricas inusuales"}`,
+          level: "danger" as const,
+          timestamp: pressure.timestamp,
+        });
+      } else if (
+        pressure?.valor &&
+        (pressure.valor < 1010 || pressure.valor > 1025)
+      ) {
+        newAlerts.push({
+          id: "pressure_warning",
+          title: pressure.valor < 1010 ? "Presión Baja" : "Presión Alta",
+          description: `Sensor reporta ${pressure.valor} hPa - Monitoreo recomendado`,
+          level: "warning" as const,
+          timestamp: pressure.timestamp,
+        });
+      }
     }
 
     setAlerts(newAlerts);
@@ -399,6 +428,12 @@ export default function Dashboard() {
         case "motion_detection":
           mqttCommands.push({
             topic: "siepa/commands/sensors/distance",
+            enabled: newState,
+          });
+          break;
+        case "pressure":
+          mqttCommands.push({
+            topic: "siepa/commands/sensors/pressure",
             enabled: newState,
           });
           break;
@@ -481,25 +516,16 @@ export default function Dashboard() {
         />
       </section>
 
-      {/* Bottom panels */}
+      {/* Alerts Panel */}
       <section className="space-y-4">
         <h2 className="text-xl font-semibold text-foreground">
-          Monitoreo y Alertas
+          Alertas del Sistema
         </h2>
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 lg:gap-8">
-          {/* Energy Consumption Panel */}
-          <EnergyConsumptionPanel
-            totalConsumption="2.7 MWh"
-            metrics={energyMetrics}
-          />
-
-          {/* Alerts Panel */}
-          <AlertsPanel
-            alerts={alerts}
-            onViewAll={() => console.log("View all alerts")}
-            onSettings={() => console.log("Alert settings")}
-          />
-        </div>
+        <AlertsPanel
+          alerts={alerts}
+          onViewAll={() => console.log("View all alerts")}
+          onSettings={() => console.log("Alert settings")}
+        />
       </section>
     </div>
   );

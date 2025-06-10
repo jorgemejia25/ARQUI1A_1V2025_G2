@@ -7,10 +7,11 @@
 
 "use client";
 
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext } from "react";
 
 import { useMqtt } from "@/app/mqtt-sensors/useMqtt";
 import { useSystemMonitor } from "@/hooks/useSystemMonitor";
+import { useSystemStore } from "@/lib/store/useSystemStore";
 
 interface MqttContextType {
   isConnected: boolean;
@@ -29,18 +30,9 @@ export function MqttProvider({ children }: MqttProviderProps) {
   // Inicializar monitoreo del sistema
   useSystemMonitor();
 
-  // Estado local para los switches de sensores (se podría mover al store también)
-  const [sensorStates, setSensorStates] = useState({
-    temperature: true,
-    humidity: true,
-    distance: true,
-    light: true,
-    air_quality: true,
-  });
-
   // Hook MQTT con configuración global
   const { isConnected, connectionStatus, reconnect, publishCommand } = useMqtt(
-    "ws://localhost:9001", // Mosquitto WebSocket local
+    "wss://broker.hivemq.com:8884/mqtt", // Broker HiveMQ público para pruebas
     [
       "siepa/sensors",
       "siepa/sensors/+",
@@ -48,10 +40,10 @@ export function MqttProvider({ children }: MqttProviderProps) {
       "siepa/status/sensors/+",
     ],
     (sensorType: string, enabled: boolean) => {
-      setSensorStates((prev) => ({
-        ...prev,
-        [sensorType]: enabled,
-      }));
+      // Aquí podrías integrar con el store si necesitas mantener el estado de los sensores
+      console.log(
+        `📊 Estado del sensor ${sensorType}: ${enabled ? "HABILITADO" : "DESHABILITADO"}`
+      );
     }
   );
 
@@ -74,16 +66,4 @@ export function useMqttContext() {
     throw new Error("useMqttContext must be used within a MqttProvider");
   }
   return context;
-}
-
-// Hook opcional para obtener estados de sensores (si se necesita)
-export function useSensorStates() {
-  // Este podría moverse al store también si es necesario
-  return useState({
-    temperature: true,
-    humidity: true,
-    distance: true,
-    light: true,
-    air_quality: true,
-  });
 }

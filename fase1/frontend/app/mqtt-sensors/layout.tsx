@@ -5,7 +5,7 @@ import { MqttProvider } from "@/lib/providers/MqttProvider";
 import React from "react";
 import { useRequireAuth } from "@/lib/contexts/AuthContext";
 
-export default function DashboardLayoutPage({
+export default function MqttSensorsLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -25,7 +25,7 @@ export default function DashboardLayoutPage({
     );
   }
 
-  // No renderizar nada si no está autenticado (el useRequireAuth se encargará de la redirección)
+  // No renderizar nada si no está autenticado
   if (!isAuthenticated) {
     return null;
   }

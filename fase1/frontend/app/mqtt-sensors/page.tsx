@@ -9,7 +9,7 @@ import { Chip } from "@heroui/chip";
 import { Divider } from "@heroui/divider";
 import { Switch } from "@heroui/switch";
 import TestAlertsButton from "@/components/molecules/TestAlertsButton";
-import { useMqtt } from "./useMqtt";
+import { useMqttContext } from "@/lib/providers/MqttProvider";
 import { useState } from "react";
 import { useSystemStore } from "@/lib/store/useSystemStore";
 
@@ -21,6 +21,10 @@ export default function MqttSensorsPage() {
     clearSensorData,
   } = useSystemStore();
 
+  // Usar el contexto MQTT global en lugar del hook local
+  const { isConnected, connectionStatus, reconnect, publishCommand } =
+    useMqttContext();
+
   // Estado local para los switches de sensores
   const [sensorStates, setSensorStates] = useState({
     temperature: true,
@@ -28,34 +32,14 @@ export default function MqttSensorsPage() {
     distance: true,
     light: true,
     air_quality: true,
+    pressure: true,
   });
 
-  const {
-    isConnected,
-    sensorData,
-    connectionStatus,
-    clearData,
-    reconnect,
-    publishCommand,
-  } = useMqtt(
-    "wss://broker.hivemq.com:8884/mqtt",
-    [
-      "siepa/sensors",
-      "siepa/sensors/+",
-      "siepa/actuators/+",
-      "siepa/status/sensors/+",
-    ],
-    (sensorType: string, enabled: boolean) => {
-      setSensorStates((prev) => ({
-        ...prev,
-        [sensorType]: enabled,
-      }));
-    }
-  );
+  // Usar los datos del store en lugar de datos locales
+  const sensorData = storeSensorData;
 
   // Función para limpiar todos los datos
   const handleClearData = () => {
-    clearData();
     clearSensorData();
   };
 
@@ -106,6 +90,12 @@ export default function MqttSensorsPage() {
           name: "Calidad del Aire",
           color: "success" as const,
         };
+      case "pressure":
+        return {
+          icon: "🌬️",
+          name: "Presión",
+          color: "primary" as const,
+        };
       default:
         return { icon: "📡", name: "Sensor", color: "default" as const };
     }
@@ -143,6 +133,8 @@ export default function MqttSensorsPage() {
         return "🔔";
       case "Sistema Completo":
         return "📊";
+      case "Presión":
+        return "🌬️";
       default:
         return "📡";
     }
@@ -163,6 +155,8 @@ export default function MqttSensorsPage() {
       case "Buzzer":
         return "default";
       case "Sistema Completo":
+        return "primary";
+      case "Presión":
         return "primary";
       default:
         return "default";
@@ -382,9 +376,36 @@ export default function MqttSensorsPage() {
                       displayKey = "💡 Luz";
                       displayValue = value ? "Detectada" : "No detectada";
                       break;
+                    case "light_lux":
+                      displayKey = "💡 Nivel de Luz";
+                      unit = "lux";
+                      break;
+                    case "light_voltage":
+                      displayKey = "💡 Voltaje LDR";
+                      unit = "V";
+                      displayValue = Number(value).toFixed(2);
+                      break;
                     case "air_quality_bad":
                       displayKey = "💨 Calidad del Aire";
                       displayValue = value ? "Malo" : "Bueno";
+                      break;
+                    case "air_quality_ppm":
+                      displayKey = "💨 CO2/Gases";
+                      unit = "ppm";
+                      break;
+                    case "air_quality_voltage":
+                      displayKey = "💨 Voltaje MQ135";
+                      unit = "V";
+                      displayValue = Number(value).toFixed(2);
+                      break;
+                    case "pressure":
+                      displayKey = "🌬️ Presión";
+                      unit = "hPa";
+                      displayValue = Number(value).toFixed(1);
+                      break;
+                    case "buzzer_state":
+                      displayKey = "🔔 Buzzer";
+                      displayValue = value ? "Activado" : "Desactivado";
                       break;
                   }
 

@@ -64,13 +64,26 @@ class SIEPASystem:
             # Leer todos los sensores
             sensor_data = self.sensor_manager.read_all_sensors()
             
-            # Controlar buzzer basado en calidad del aire (igual que allin.py)
+            # Controlar buzzer basado en calidad del aire (igual que allin_w_display.py)
             aire_malo = sensor_data.get('air_quality_bad', False)
             if ALERT_CONFIG['BUZZER_ON_BAD_AIR']:
                 self.sensor_manager.control_buzzer(aire_malo)  # Buzzer ON si el aire es malo
             
             # Agregar estado del buzzer a los datos
             sensor_data['buzzer_state'] = aire_malo
+            
+            # Determinar qué LEDs están activos (las alertas se manejan automáticamente en sensor_manager)
+            led_states = {
+                'temperature': sensor_data.get('temperature') is not None and (
+                    sensor_data.get('temperature') < ALERT_CONFIG['TEMPERATURE']['min'] or 
+                    sensor_data.get('temperature') > ALERT_CONFIG['TEMPERATURE']['max']),
+                'humidity': sensor_data.get('humidity') is not None and (
+                    sensor_data.get('humidity') < ALERT_CONFIG['HUMIDITY']['min'] or 
+                    sensor_data.get('humidity') > ALERT_CONFIG['HUMIDITY']['max']),
+                'light': sensor_data.get('light_lux') is not None and 
+                    sensor_data.get('light_lux') > ALERT_CONFIG['LIGHT']['max'],
+                'air_quality': aire_malo
+            }
             
             # Mostrar en display
             self.display_manager.display_sensor_data(sensor_data)
@@ -80,6 +93,8 @@ class SIEPASystem:
                 self.mqtt_manager.publish_sensor_data(sensor_data)
                 # Publicar estado del buzzer
                 self.mqtt_manager.publish_buzzer_state(aire_malo)
+                # Publicar estado de los LEDs
+                self.mqtt_manager.publish_led_status(led_states)
             
             # Esperar antes de la siguiente lectura
             time.sleep(SENSOR_CONFIG['READ_INTERVAL'])
