@@ -130,33 +130,48 @@ class SIEPASystem:
             
 
 
-            # Verificar alertas críticas igual que allin_w_display.py
+            # Verificar alertas críticas EXACTAMENTE igual que allin_w_display.py
             if temp is not None and temp > 30:
                 self.sensor_manager.activar_alerta("Temp. muy alta", SENSOR_CONFIG['LED_TEMP'])
 
-            if hum is not None and hum > 0.50:
+            if hum is not None and hum > 60:  # CAMBIO: 60% como en allin_w_display.py
                 self.sensor_manager.activar_alerta("Humedad alta", SENSOR_CONFIG['LED_HUM'])
 
-            if lux is not None and lux < 700:
+            # Usar no_hay_luz como en allin_w_display.py (basado en voltaje >= 1.2V)
+            no_hay_luz = sensor_data.get('no_hay_luz', False)
+            if voltaje_ldr is not None and no_hay_luz:
                 self.sensor_manager.activar_alerta("No hay luz", SENSOR_CONFIG['LED_LUZ'])
 
             if presion is not None and (presion < 980 or presion > 1030):
                 self.sensor_manager.activar_alerta("Presion anormal", SENSOR_CONFIG['LED_AIRE'])  # Usar LED azul para presión
             
-            # Determinar qué LEDs están activos
-            led_states = {
-                'temperature': temp is not None and temp > 30,
-                'humidity': hum is not None and hum > 0.50,
-                'light': lux is not None and lux < 700,
-                'air_quality': aire_malo,
-                'pressure': presion is not None and (presion < 980 or presion > 1030)
-            }
+            # Determinar qué LEDs están activos (automático vs manual)
+            if self.sensor_manager.is_manual_led_control():
+                # En modo manual, usar estados manuales
+                led_states = self.sensor_manager.get_led_states().copy()
+                led_states['manual_control'] = True
+            else:
+                # En modo automático, usar alertas como siempre
+                led_states = {
+                    'temperature': temp is not None and temp > 30,
+                    'humidity': hum is not None and hum > 60,  # 60% como en allin_w_display.py
+                    'light': voltaje_ldr is not None and no_hay_luz,  # Usar no_hay_luz
+                    'air_quality': aire_malo,
+                    'pressure': presion is not None and (presion < 980 or presion > 1030),
+                    'manual_control': False
+                }
             
             # Enviar por MQTT si está habilitado
             if self.mqtt_manager and self.mqtt_manager.is_connected():
                 self.mqtt_manager.publish_sensor_data(sensor_data)
-                # Publicar estado del buzzer
-                self.mqtt_manager.publish_buzzer_state(aire_malo)
+                
+                # Publicar estado del buzzer solo si no está en modo manual
+                if not self.sensor_manager.is_manual_buzzer_control():
+                    self.mqtt_manager.publish_buzzer_state(aire_malo)
+                else:
+                    # En modo manual, publicar el estado manual actual
+                    self.mqtt_manager.publish_buzzer_state(self.sensor_manager.get_buzzer_state())
+                
                 # Publicar estado del motor
                 self.mqtt_manager.publish_motor_state(self.motor_state)
                 # Publicar estado de los LEDs
@@ -170,8 +185,19 @@ class SIEPASystem:
         print(f"📥 Comando MQTT recibido: {topic} -> {payload}")
         
         if topic == 'GRUPO2/commands/rasp01/buzzer':
-            state = payload.get('state', False)
-            self.sensor_manager.control_buzzer(state)
+            enabled = payload.get('enabled', False)
+            
+            # Activar modo manual del buzzer al recibir comando del frontend
+            if not self.sensor_manager.is_manual_buzzer_control():
+                self.sensor_manager.set_manual_buzzer_control(True)
+                print("🎛️  Buzzer cambiado a modo manual por comando frontend")
+            
+            # Controlar el buzzer manualmente
+            self.sensor_manager.set_buzzer_state(enabled)
+            
+            # Enviar confirmación por MQTT
+            if self.mqtt_manager:
+                self.mqtt_manager.publish_buzzer_state(enabled)
         
         elif topic == 'GRUPO2/commands/rasp01/system':
             command = payload.get('command')
@@ -231,6 +257,85 @@ class SIEPASystem:
                         'timestamp': time.time()
                     }
                     self.mqtt_manager.client.publish(response_topic, json.dumps(response_payload))
+        
+        elif topic.startswith('GRUPO2/commands/rasp01/leds/'):
+            # Comandos de control de LEDs
+            led_command_type = topic.split('/')[-1]  # control, individual, pattern
+            
+            if led_command_type == 'control':
+                # Control general de LEDs (manual/automático)
+                mode = payload.get('mode', 'automatic')  # 'manual' o 'automatic'
+                manual_mode = mode == 'manual'
+                
+                self.sensor_manager.set_manual_led_control(manual_mode)
+                
+                # También controlar el buzzer con el mismo modo que los LEDs
+                self.sensor_manager.set_manual_buzzer_control(manual_mode)
+                
+                # Enviar confirmación
+                if self.mqtt_manager:
+                    response_payload = {
+                        'manual_mode': manual_mode,
+                        'leds': self.sensor_manager.get_led_states(),
+                        'buzzer': self.sensor_manager.get_buzzer_state(),
+                        'timestamp': time.time()
+                    }
+                    self.mqtt_manager.client.publish('GRUPO2/status/rasp01/leds', json.dumps(response_payload))
+            
+            elif led_command_type == 'individual':
+                # Control individual de LEDs
+                led_type = payload.get('led')  # temperature, humidity, light, air_quality, pressure
+                action = payload.get('action', 'toggle')  # toggle, on, off
+                
+                print(f"🔧 [LED Backend] Control individual - LED: {led_type}, Acción: {action}")
+                
+                if led_type:
+                    # Activar modo manual si no está activo
+                    if not self.sensor_manager.is_manual_led_control():
+                        self.sensor_manager.set_manual_led_control(True)
+                        print("🎛️  LEDs cambiados a modo manual por comando individual")
+                    
+                    success = False
+                    if action == 'toggle':
+                        success = self.sensor_manager.toggle_led(led_type)
+                    elif action == 'on':
+                        success = self.sensor_manager.set_led_state(led_type, True)
+                    elif action == 'off':
+                        success = self.sensor_manager.set_led_state(led_type, False)
+                    
+                    # Enviar confirmación
+                    if success and self.mqtt_manager:
+                        response_payload = {
+                            'manual_mode': self.sensor_manager.is_manual_led_control(),
+                            'leds': self.sensor_manager.get_led_states(),
+                            'buzzer': self.sensor_manager.get_buzzer_state(),
+                            'timestamp': time.time()
+                        }
+                        self.mqtt_manager.client.publish('GRUPO2/status/rasp01/leds', json.dumps(response_payload))
+            
+            elif led_command_type == 'pattern':
+                # Patrones de LEDs
+                pattern = payload.get('pattern')  # all_on, all_off, alternate, sequence
+                
+                print(f"🔧 [LED Backend] Patrón solicitado: {pattern}")
+                
+                if pattern:
+                    # Activar modo manual si no está activo
+                    if not self.sensor_manager.is_manual_led_control():
+                        self.sensor_manager.set_manual_led_control(True)
+                        print("🎛️  LEDs cambiados a modo manual por comando de patrón")
+                    
+                    self.sensor_manager.set_led_pattern(pattern)
+                    
+                    # Enviar confirmación
+                    if self.mqtt_manager:
+                        response_payload = {
+                            'manual_mode': self.sensor_manager.is_manual_led_control(),
+                            'leds': self.sensor_manager.get_led_states(),
+                            'buzzer': self.sensor_manager.get_buzzer_state(),
+                            'timestamp': time.time()
+                        }
+                        self.mqtt_manager.client.publish('GRUPO2/status/rasp01/leds', json.dumps(response_payload))
         
         # El sistema ya no maneja comandos de historial
         # Los datos se envían en tiempo real únicamente

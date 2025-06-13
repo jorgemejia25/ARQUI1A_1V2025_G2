@@ -100,7 +100,9 @@ class DisplayManager:
         
         # Mostrar luz igual que allin_w_display.py
         if lux is not None and voltaje_ldr is not None:
-            print(f"💡 Luz: {'SI' if hay_luz else 'NO'} ({lux} lux | {voltaje_ldr:.2f}V)")
+            no_hay_luz = sensor_data.get('no_hay_luz', False)
+            estado_luz = "SI" if hay_luz else ("NO" if no_hay_luz else "INTERMEDIA")
+            print(f"💡 Luz: {estado_luz} ({lux} lux | {voltaje_ldr:.2f}V)")
         else:
             print(f"💡 Luz: ERROR (Sensor no detectado)")
         
@@ -178,10 +180,13 @@ class DisplayManager:
         if temp is not None and temp > 30:
             self.activar_alerta("Temp. muy alta")
 
-        if hum is not None and hum > 0.50:  # 50% como en el original
+        if hum is not None and hum > 60:  # 60% como en allin_w_display.py
             self.activar_alerta("Humedad alta")
 
-        if lux is not None and lux < 700:
+        # Usar no_hay_luz basado en voltaje como en allin_w_display.py
+        no_hay_luz = sensor_data.get('no_hay_luz', False)
+        voltaje_ldr = sensor_data.get('light_voltage')
+        if voltaje_ldr is not None and no_hay_luz:
             self.activar_alerta("No hay luz")
 
         if presion is not None and (presion < 980 or presion > 1030):

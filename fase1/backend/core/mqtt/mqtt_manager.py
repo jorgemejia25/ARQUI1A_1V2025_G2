@@ -324,11 +324,18 @@ class MQTTManager:
             return False
             
         try:
+            # Separar manual_control del resto de los estados de LEDs
+            manual_control = led_states.pop('manual_control', False)
+            
             led_data = {
-                'led_temperature': led_states.get('temperature', False),
-                'led_humidity': led_states.get('humidity', False),
-                'led_light': led_states.get('light', False),
-                'led_air_quality': led_states.get('air_quality', False),
+                'leds': {
+                    'temperature': led_states.get('temperature', False),
+                    'humidity': led_states.get('humidity', False),
+                    'light': led_states.get('light', False),
+                    'air_quality': led_states.get('air_quality', False),
+                    'pressure': led_states.get('pressure', False),
+                },
+                'manual_mode': manual_control,
                 'timestamp': time.time(),
                 'mode': self.mode
             }
@@ -342,7 +349,9 @@ class MQTTManager:
             )
             
             if result.rc == mqtt.MQTT_ERR_SUCCESS:
-                print(f"💡 LEDs: {sum(led_states.values())} activos")
+                active_leds = sum(led_states.values())
+                mode_str = "Manual" if manual_control else "Automático"
+                print(f"💡 LEDs ({mode_str}): {active_leds} activos")
                 return True
             else:
                 print(f"❌ Error publicando estado LEDs: {result.rc}")
@@ -394,6 +403,7 @@ class MQTTManager:
             'GRUPO2/commands/rasp01/sensors/+',  # Para control individual de sensores
             'GRUPO2/commands/rasp01/sensors/enable',  # Para habilitar/deshabilitar sensores
             'GRUPO2/commands/rasp01/actuators/+',  # Para control de actuadores (motor, fan, etc.)
+            'GRUPO2/commands/rasp01/leds/+',  # Para comandos de LEDs (control, individual, pattern)
         ]
         
         for topic in command_topics:

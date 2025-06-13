@@ -30,9 +30,8 @@ SENSOR_CONFIG = {
     'LED_LUZ': 13,      # LED Verde - Luz
     'LED_AIRE': 19,     # LED Azul - Calidad del aire
     
-    # BMP280 - Sensor de presión
-    'BMP280_I2C_ADDRESS': 0x76,
-    'BMP280_SEA_LEVEL_PRESSURE': 1013.25,  # hPa
+    # BMP180 - Sensor de presión
+    'BMP180_SEA_LEVEL_PRESSURE': 1013.25,  # hPa
     
     # Intervalos de lectura (segundos)
     'READ_INTERVAL': 2,
@@ -63,6 +62,10 @@ MQTT_CONFIG = {
         'PRESSURE': 'GRUPO2/sensores/rasp01/presion',
         'BUZZER': 'GRUPO2/actuadores/rasp01/buzzer',
         'LEDS': 'GRUPO2/actuadores/rasp01/leds',
+        'LED_CONTROL': 'GRUPO2/commands/rasp01/leds/control',  # Control manual de LEDs
+        'LED_INDIVIDUAL': 'GRUPO2/commands/rasp01/leds/individual',  # Control individual
+        'LED_PATTERN': 'GRUPO2/commands/rasp01/leds/pattern',  # Patrones de LEDs
+        'LED_STATUS': 'GRUPO2/status/rasp01/leds',  # Estado de LEDs
         'MOTOR': 'GRUPO2/actuadores/rasp01/motor',
         'FAN': 'GRUPO2/actuadores/rasp01/fan',  # Alias para el motor
         'HISTORY': 'GRUPO2/history/rasp01',  # Para datos históricos
