@@ -21,15 +21,17 @@ interface UseMqttReturn {
   clearData: () => void;
   reconnect: () => void;
   publishCommand: (topic: string, payload: any) => boolean;
+  requestHistoricalData: (sensorType?: string, maxPoints?: number) => boolean;
 }
 
 export const useMqtt = (
-  brokerUrl: string = "ws://localhost:9001", // Mosquitto WebSocket local
+  brokerUrl: string = "wss://broker.hivemq.com:8884/mqtt", // HiveMQ público
   topics: string[] = [
-    "siepa/sensors",
-    "siepa/sensors/+",
-    "siepa/actuators/+",
-    "siepa/status/sensors/+",
+    "GRUPO2/sensores/rasp01",
+    "GRUPO2/sensores/rasp01/+",
+    "GRUPO2/actuadores/rasp01",
+    "GRUPO2/actuadores/rasp01/+",
+    "GRUPO2/status/rasp01/sensors/+",
   ],
   onStatusMessage?: (sensorType: string, enabled: boolean) => void
 ): UseMqttReturn => {
@@ -52,25 +54,62 @@ export const useMqtt = (
 
   const publishCommand = useCallback(
     (topic: string, payload: any): boolean => {
-      if (!client || !isConnected) {
-        console.error("⚠️ Cliente MQTT no conectado");
+      console.log(
+        `🔍 Intentando enviar comando - Cliente: ${!!client}, Conectado: ${isConnected}, Tópico: ${topic}`
+      );
+
+      if (!client) {
+        console.error("⚠️ Cliente MQTT no existe");
+        return false;
+      }
+
+      // Sincronizar estado si hay discrepancia
+      if (client.connected && !isConnected) {
+        console.log(
+          "🔄 Sincronizando estado - Cliente conectado pero estado interno falso"
+        );
+        setIsConnected(true);
+        setConnectionStatus("Conectado");
+        updateConnectionStatus(true, "Conectado");
+      }
+
+      if (!client.connected) {
+        console.error(
+          `⚠️ Cliente MQTT no conectado - Estado interno: ${isConnected}, Estado cliente: ${client.connected}`
+        );
+        // Intentar reconectar si el estado interno dice que debería estar conectado
+        if (isConnected) {
+          console.log("🔄 Intentando reconectar automáticamente...");
+          connect();
+        }
         return false;
       }
 
       try {
         const message =
           typeof payload === "string" ? payload : JSON.stringify(payload);
-        const result = client.publish(topic, message, { qos: 1 });
+        console.log(`📤 Enviando mensaje a ${topic}:`, message);
+
+        const result = client.publish(topic, message, { qos: 1 }, (error) => {
+          if (error) {
+            console.error(
+              `❌ Error en callback de publish para ${topic}:`,
+              error
+            );
+          } else {
+            console.log(`✅ Mensaje confirmado enviado a ${topic}`);
+          }
+        });
 
         if (result) {
-          console.log(`📤 Comando enviado a ${topic}:`, payload);
+          console.log(`📤 Comando encolado exitosamente para ${topic}`);
           return true;
         } else {
-          console.error(`❌ Error enviando comando a ${topic}`);
+          console.error(`❌ Error al encolar comando para ${topic}`);
           return false;
         }
       } catch (error) {
-        console.error(`❌ Error publicando comando:`, error);
+        console.error(`❌ Excepción enviando comando a ${topic}:`, error);
         return false;
       }
     },
@@ -134,6 +173,55 @@ export const useMqtt = (
           sensor_type: "Estado del Sistema",
           evaluationType: null,
         };
+      case "fan":
+      case "motor":
+        return {
+          unidad:
+            value === "ON" || value === "on" || value === true
+              ? "Encendido"
+              : value === "OFF" || value === "off" || value === false
+                ? "Apagado"
+                : String(value),
+          sensor_type: "Ventilador",
+          evaluationType: "fan",
+        };
+      // Casos en español que el backend podría enviar
+      case "temperatura":
+        return {
+          unidad: "°C",
+          sensor_type: "Temperatura",
+          evaluationType: "temperature",
+        };
+      case "humedad":
+        return {
+          unidad: "%",
+          sensor_type: "Humedad",
+          evaluationType: "humidity",
+        };
+      case "distancia":
+        return {
+          unidad: "cm",
+          sensor_type: "Distancia",
+          evaluationType: "distance",
+        };
+      case "luz":
+        return {
+          unidad: typeof value === "number" ? "lux" : "Estado",
+          sensor_type: "Luz",
+          evaluationType: "light",
+        };
+      case "gas":
+        return {
+          unidad: typeof value === "number" ? "ppm" : "Estado",
+          sensor_type: "Calidad del Aire",
+          evaluationType: "air_quality",
+        };
+      case "presion":
+        return {
+          unidad: "hPa",
+          sensor_type: "Presión",
+          evaluationType: "pressure",
+        };
       default:
         return {
           unidad: "",
@@ -144,58 +232,121 @@ export const useMqtt = (
   };
 
   const connect = useCallback(() => {
+    console.log(
+      `🔍 useMqtt connect() llamado - Cliente actual: ${!!client}, Conectado: ${isConnected}`
+    );
+
+    if (client && client.connected) {
+      console.log("✅ Cliente ya conectado, no reconectar");
+      return client;
+    }
+
     if (client) {
+      console.log("🔄 Cerrando cliente anterior");
       client.end();
     }
 
-    // Configuración para conexión WebSocket local a Mosquitto
+    // Configuración para conexión WebSocket MQTT más robusta
     const options = {
       keepalive: 60,
       clientId: `siepa_frontend_${Math.random().toString(16).substr(2, 8)}`,
       protocolId: "MQTT" as const,
       protocolVersion: 4 as const,
       clean: true,
-      reconnectPeriod: 1000,
-      connectTimeout: 30 * 1000,
+      reconnectPeriod: 3000, // Reconectar cada 3 segundos
+      connectTimeout: 15 * 1000, // Timeout más corto
+      rejectUnauthorized: false,
       will: {
-        topic: "siepa/frontend/status",
-        payload: "Frontend desconectado",
+        topic: "GRUPO2/frontend/rasp01/status",
+        payload: JSON.stringify({
+          status: "offline",
+          timestamp: Date.now(),
+          clientId: `siepa_frontend_${Math.random().toString(16).substr(2, 8)}`,
+        }),
         qos: 0 as const,
         retain: false,
       },
     };
 
-    console.log(`🔄 Conectando a Mosquitto local en ${brokerUrl}...`);
-    const newClient = mqtt.connect(brokerUrl, options);
-    setClient(newClient);
+    console.log(`🔄 Conectando a broker MQTT en ${brokerUrl}...`);
+
+    let newClient;
+    try {
+      newClient = mqtt.connect(brokerUrl, options);
+      setClient(newClient);
+    } catch (error) {
+      console.error("❌ Error creando cliente MQTT:", error);
+      setConnectionStatus("Error al crear cliente");
+      setIsConnected(false);
+      updateConnectionStatus(false, "Error al crear cliente");
+      return null;
+    }
 
     newClient.on("connect", () => {
-      console.log("✅ Conectado al broker Mosquitto local!");
+      console.log("✅ Conectado al broker MQTT!");
       setIsConnected(true);
       setConnectionStatus("Conectado");
       updateConnectionStatus(true, "Conectado");
 
-      // Suscribirse a todos los tópicos SIEPA
-      topics.forEach((topic) => {
-        newClient.subscribe(topic, (err) => {
-          if (err) {
-            console.error(`Error al suscribirse a ${topic}:`, err);
-            setConnectionStatus("Error en suscripción");
-            updateConnectionStatus(false, "Error en suscripción");
-          } else {
-            console.log(`📡 Suscrito a ${topic}`);
-          }
-        });
-      });
+      // Verificar estado del cliente después de conectar
+      console.log(
+        `🔍 Estado post-conexión - Cliente conectado: ${newClient.connected}, Estado interno: true`
+      );
 
-      setConnectionStatus("Conectado y suscrito");
-      updateConnectionStatus(true, "Conectado y suscrito");
+      // Suscribirse a todos los tópicos SIEPA con mejor manejo de errores
+      let subscriptionCount = 0;
+      let successfulSubscriptions = 0;
+
+      const subscribeToTopics = () => {
+        topics.forEach((topic, index) => {
+          // Añadir un pequeño delay entre suscripciones para evitar sobrecarga
+          setTimeout(() => {
+            if (newClient.connected) {
+              newClient.subscribe(topic, { qos: 0 }, (err) => {
+                subscriptionCount++;
+                if (err) {
+                  console.error(`❌ Error al suscribirse a ${topic}:`, err);
+                  if (subscriptionCount === topics.length) {
+                    setConnectionStatus(
+                      `Conectado (${successfulSubscriptions}/${topics.length} suscripciones)`
+                    );
+                    updateConnectionStatus(
+                      successfulSubscriptions > 0,
+                      `Conectado (${successfulSubscriptions}/${topics.length} suscripciones)`
+                    );
+                  }
+                } else {
+                  successfulSubscriptions++;
+                  console.log(`📡 Suscrito a ${topic}`);
+                  if (subscriptionCount === topics.length) {
+                    setConnectionStatus("Conectado y suscrito");
+                    updateConnectionStatus(true, "Conectado y suscrito");
+                  }
+                }
+              });
+            } else {
+              console.warn(
+                `⚠️ Cliente desconectado, no se puede suscribir a ${topic}`
+              );
+            }
+          }, index * 100); // 100ms de delay entre cada suscripción
+        });
+      };
+
+      // Ejecutar suscripciones después de una pequeña pausa para asegurar que la conexión esté estable
+      setTimeout(subscribeToTopics, 500);
     });
 
     newClient.on("message", (receivedTopic, message) => {
       try {
         const messageStr = message.toString();
         let parsedData;
+
+        // Log para debugging
+        console.log(`📥 MQTT Message received:`, {
+          topic: receivedTopic,
+          message: messageStr,
+        });
 
         // Intentar parsear como JSON, sino usar como string directo
         try {
@@ -206,7 +357,7 @@ export const useMqtt = (
 
         // Manejar mensajes de estado de sensores
         if (
-          receivedTopic.startsWith("siepa/status/sensors/") &&
+          receivedTopic.startsWith("GRUPO2/status/rasp01/sensors/") &&
           onStatusMessage
         ) {
           const sensorType = receivedTopic.split("/").pop();
@@ -221,7 +372,7 @@ export const useMqtt = (
         let newSensorData: SensorData;
 
         if (
-          receivedTopic === "siepa/sensors" &&
+          receivedTopic === "GRUPO2/sensores/rasp01" &&
           typeof parsedData === "object"
         ) {
           // Datos completos del sistema
@@ -309,34 +460,41 @@ export const useMqtt = (
     });
 
     newClient.on("error", (error) => {
-      console.error("Error de conexión MQTT:", error);
-      setConnectionStatus("Error de conexión");
+      console.error("❌ Error de conexión MQTT:", error);
+      setConnectionStatus(`Error: ${error.message || "Conexión falló"}`);
       setIsConnected(false);
-      updateConnectionStatus(false, "Error de conexión");
+      updateConnectionStatus(
+        false,
+        `Error: ${error.message || "Conexión falló"}`
+      );
     });
 
     newClient.on("close", () => {
-      console.log("Conexión MQTT cerrada");
+      console.log("🔌 Conexión MQTT cerrada");
       setConnectionStatus("Conexión cerrada");
       setIsConnected(false);
       updateConnectionStatus(false, "Conexión cerrada");
     });
 
     newClient.on("reconnect", () => {
-      console.log("Reintentando conexión MQTT...");
+      console.log("🔄 Reintentando conexión MQTT...");
       setConnectionStatus("Reconectando...");
       updateConnectionStatus(false, "Reconectando...");
+      setIsConnected(false);
     });
 
-    newClient.on("disconnect", () => {
-      console.log("Desconectado del broker MQTT");
+    newClient.on("disconnect", (packet) => {
+      console.log(
+        "📡 Desconectado del broker MQTT",
+        packet ? `- Razón: ${packet.reasonCode}` : ""
+      );
       setConnectionStatus("Desconectado");
       setIsConnected(false);
       updateConnectionStatus(false, "Desconectado");
     });
 
     newClient.on("offline", () => {
-      console.log("Cliente MQTT offline");
+      console.log("📴 Cliente MQTT offline");
       setConnectionStatus("Offline");
       setIsConnected(false);
       updateConnectionStatus(false, "Offline");
@@ -351,14 +509,65 @@ export const useMqtt = (
   }, [connect]);
 
   useEffect(() => {
-    const mqttClient = connect();
+    console.log("🔍 useMqtt useEffect ejecutándose - inicializando conexión");
+
+    let mqttClient = null;
+
+    // Solo conectar si no hay cliente o no está conectado
+    if (!client || !client.connected) {
+      mqttClient = connect();
+    } else {
+      console.log("✅ Cliente ya existente y conectado, reutilizando");
+      mqttClient = client;
+    }
 
     return () => {
-      if (mqttClient) {
-        mqttClient.end();
-      }
+      console.log("🔍 useMqtt cleanup ejecutándose");
+      // No cerrar automáticamente para mantener conexión entre navegaciones
+      // Solo cerrar si realmente se está desmontando todo el provider
     };
-  }, []);
+  }, []); // Sin dependencias para evitar reconexiones
+
+  const requestHistoricalData = useCallback(
+    (sensorType: string = "all", maxPoints: number = 30): boolean => {
+      if (!client || !isConnected) {
+        console.error("⚠️ Cliente MQTT no conectado");
+        return false;
+      }
+
+      try {
+        const payload = {
+          sensor_type: sensorType,
+          max_points: maxPoints,
+          timestamp: new Date().toISOString(),
+          source: "frontend",
+        };
+
+        const message = JSON.stringify(payload);
+        const result = client.publish(
+          "GRUPO2/commands/rasp01/history",
+          message,
+          {
+            qos: 1,
+          }
+        );
+
+        if (result) {
+          console.log(
+            `📤 Solicitando historial de ${sensorType} (${maxPoints} puntos)`
+          );
+          return true;
+        } else {
+          console.error(`❌ Error solicitando historial`);
+          return false;
+        }
+      } catch (error) {
+        console.error(`❌ Error solicitando historial:`, error);
+        return false;
+      }
+    },
+    [client, isConnected]
+  );
 
   return {
     isConnected,
@@ -367,5 +576,6 @@ export const useMqtt = (
     clearData,
     reconnect,
     publishCommand,
+    requestHistoricalData,
   };
 };

@@ -1,8 +1,12 @@
 # Sistema SIEPA - Dependencias del Backend
+# Optimizado para Raspberry Pi
 
 # ============== DEPENDENCIAS CORE ==============
 # Comunicación MQTT (opcional, pero recomendado)
 paho-mqtt>=1.6.0
+
+# Base de datos SQLite optimizada (viene con Python, pero especificamos versión)
+# sqlite3 incluido en Python estándar
 
 # ============== DEPENDENCIAS PARA RASPBERRY PI (MODO REAL) ==============
 # GPIO y sensores (solo en Raspberry Pi)

@@ -134,16 +134,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   <Bell className="w-5 h-5" />
                 </Button>
                 {activeAlerts.length > 0 && (
-                  <Chip
-                    size="sm"
+                <Chip
+                  size="sm"
                     color={
                       status.systemMode === "danger" ? "danger" : "warning"
                     }
-                    variant="solid"
-                    className="absolute -top-1 -right-1 min-w-5 h-5 text-xs"
-                  >
+                  variant="solid"
+                  className="absolute -top-1 -right-1 min-w-5 h-5 text-xs"
+                >
                     {activeAlerts.length > 99 ? "99+" : activeAlerts.length}
-                  </Chip>
+                </Chip>
                 )}
               </div>
 

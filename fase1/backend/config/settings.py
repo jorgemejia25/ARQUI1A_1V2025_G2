@@ -20,6 +20,10 @@ SENSOR_CONFIG = {
     # Buzzer
     'BUZZER_PIN': 22,
     
+    # Motor
+    'MOTOR_PIN': 21,
+    
+    
     # LEDs de Alerta
     'LED_TEMP': 5,      # LED Rojo - Temperatura
     'LED_HUM': 6,       # LED Amarillo - Humedad
@@ -50,15 +54,18 @@ MQTT_CONFIG = {
     'USERNAME': None,
     'PASSWORD': None,
     'TOPICS': {
-        'SENSORS': 'siepa/sensors',
-        'TEMPERATURE': 'siepa/sensors/temperature',
-        'HUMIDITY': 'siepa/sensors/humidity',
-        'DISTANCE': 'siepa/sensors/distance',
-        'LIGHT': 'siepa/sensors/light',
-        'AIR_QUALITY': 'siepa/sensors/air_quality',
-        'PRESSURE': 'siepa/sensors/pressure',
-        'BUZZER': 'siepa/actuators/buzzer',
-        'LEDS': 'siepa/actuators/leds',
+        'SENSORS': 'GRUPO2/sensores/rasp01',
+        'TEMPERATURE': 'GRUPO2/sensores/rasp01/temperatura',
+        'HUMIDITY': 'GRUPO2/sensores/rasp01/humedad',
+        'DISTANCE': 'GRUPO2/sensores/rasp01/distancia',
+        'LIGHT': 'GRUPO2/sensores/rasp01/luz',
+        'AIR_QUALITY': 'GRUPO2/sensores/rasp01/gas',
+        'PRESSURE': 'GRUPO2/sensores/rasp01/presion',
+        'BUZZER': 'GRUPO2/actuadores/rasp01/buzzer',
+        'LEDS': 'GRUPO2/actuadores/rasp01/leds',
+        'MOTOR': 'GRUPO2/actuadores/rasp01/motor',
+        'FAN': 'GRUPO2/actuadores/rasp01/fan',  # Alias para el motor
+        'HISTORY': 'GRUPO2/history/rasp01',  # Para datos históricos
     },
     'QOS': 1,
     'RETAIN': False,

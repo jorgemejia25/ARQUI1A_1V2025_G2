@@ -272,6 +272,50 @@ class MQTTManager:
         except Exception as e:
             print(f"❌ Error publicando estado buzzer: {e}")
             return False
+
+    def publish_motor_state(self, state: bool) -> bool:
+        """Publica estado del motor/ventilador"""
+        if not self.connected:
+            print("⚠️  MQTT no conectado - no se puede enviar estado del motor")
+            return False
+            
+        try:
+            motor_data = {
+                'valor': 'ON' if state else 'OFF',
+                'unidad': 'Encendido' if state else 'Apagado',
+                'timestamp': time.time(),
+                'sensor_type': 'Ventilador',
+                'evaluationType': 'fan',
+                'evalValue': state
+            }
+            
+            payload = json.dumps(motor_data)
+            
+            # Publicar en ambos tópicos (motor y fan para compatibilidad)
+            topics = [self.config['TOPICS']['MOTOR'], self.config['TOPICS']['FAN']]
+            
+            success = True
+            for topic in topics:
+                result = self.client.publish(
+                    topic,
+                    payload,
+                    qos=self.config['QOS']
+                )
+                
+                if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                    print(f"🔧 Motor publicado en {topic}: {motor_data['valor']}")
+                else:
+                    print(f"❌ Error publicando estado motor en {topic}: {result.rc}")
+                    success = False
+                    
+            return success
+                
+        except Exception as e:
+            print(f"❌ Error publicando estado motor: {e}")
+            return False
+
+    # Sistema simplificado - Ya no maneja datos históricos
+    # Los datos se envían únicamente en tiempo real
     
     def publish_led_status(self, led_states: Dict[str, bool]) -> bool:
         """Publica estado de los LEDs de alerta"""
@@ -316,7 +360,7 @@ class MQTTManager:
             
         try:
             for sensor_type, enabled in sensor_states.items():
-                topic = f"siepa/status/sensors/{sensor_type}"
+                topic = f"GRUPO2/status/rasp01/sensors/{sensor_type}"
                 payload = json.dumps({
                     'sensor': sensor_type,
                     'enabled': enabled,
@@ -345,10 +389,11 @@ class MQTTManager:
         
         # Suscribirse a tópicos de comandos
         command_topics = [
-            'siepa/commands/buzzer',
-            'siepa/commands/system',
-            'siepa/commands/sensors/+',  # Para control individual de sensores
-            'siepa/commands/sensors/enable',  # Para habilitar/deshabilitar sensores
+            'GRUPO2/commands/rasp01/buzzer',
+            'GRUPO2/commands/rasp01/system',
+            'GRUPO2/commands/rasp01/sensors/+',  # Para control individual de sensores
+            'GRUPO2/commands/rasp01/sensors/enable',  # Para habilitar/deshabilitar sensores
+            'GRUPO2/commands/rasp01/actuators/+',  # Para control de actuadores (motor, fan, etc.)
         ]
         
         for topic in command_topics:
@@ -386,10 +431,18 @@ class MQTTManager:
             try:
                 topic = msg.topic
                 payload = json.loads(msg.payload.decode())
-                print(f"📥 Mensaje recibido en {topic}: {payload}")
+                print(f"📥 Mensaje MQTT recibido en {topic}: {payload}")
+                
+                # Log especial para comandos de historial
+                if 'history' in topic:
+                    print(f"🔍 COMANDO DE HISTORIAL DETECTADO: {topic}")
+                    print(f"🔍 Payload del comando: {payload}")
+                
                 self.on_message_callback(topic, payload)
             except Exception as e:
                 print(f"❌ Error procesando mensaje MQTT: {e}")
+                print(f"❌ Tópico: {msg.topic}")
+                print(f"❌ Payload raw: {msg.payload}")
     
     def _on_publish(self, client, userdata, mid):
         """Callback de publicación exitosa"""

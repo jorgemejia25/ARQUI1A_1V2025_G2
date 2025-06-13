@@ -43,6 +43,15 @@ export interface SensorData {
   evalValue?: number;
 }
 
+// Nuevo tipo para el historial en memoria
+export interface SensorHistoryPoint {
+  timestamp: Date;
+  value: number;
+  sensor_type: string;
+  unit: string;
+  formatted_time: string;
+}
+
 // Tipos para el sistema de gráficas/historial
 export interface ChartDataPoint {
   x: Date; // timestamp
@@ -62,6 +71,9 @@ interface SystemStore {
   alerts: Alert[];
   sensorData: SensorData[];
 
+  // Buffer de historial en memoria (últimos 20 datos por sensor)
+  sensorHistory: Record<string, SensorHistoryPoint[]>;
+
   // Datos para gráficas/historial
   chartData: Record<string, SensorChartData>;
 
@@ -76,6 +88,10 @@ interface SystemStore {
   // Acciones para manejar datos de sensores
   addSensorData: (data: SensorData) => void;
   clearSensorData: () => void;
+
+  // Acciones para el historial en memoria
+  getHistoryData: (sensorType?: string) => SensorHistoryPoint[];
+  clearHistoryData: () => void;
 
   // Acciones para manejar datos de gráficas/historial
   addChartData: (
@@ -179,6 +195,7 @@ export const useSystemStore = create<SystemStore>()(
         },
         alerts: [],
         sensorData: [],
+        sensorHistory: {},
         chartData: {},
         thresholds: defaultThresholds,
 
@@ -239,21 +256,109 @@ export const useSystemStore = create<SystemStore>()(
               return new Date(ts);
             };
 
+            // Procesar datos del historial (nuevo formato optimizado)
+            if (data.complete_data?.type === "historical_data") {
+              const historyData = data.complete_data.data || [];
+              console.log(
+                `📊 Procesando datos históricos: ${historyData.length} puntos`
+              );
+
+              // Procesar cada punto histórico
+              historyData.forEach((point: any) => {
+                if (
+                  point.sensor_type &&
+                  point.value !== undefined &&
+                  !point.sensor_type.startsWith("_")
+                ) {
+                  const timestamp = getTimestamp(point.timestamp);
+                  const numericValue =
+                    typeof point.value === "number"
+                      ? point.value
+                      : parseFloat(String(point.value));
+
+                  if (!isNaN(numericValue)) {
+                    setTimeout(() => {
+                      get().addChartData(
+                        point.sensor_type,
+                        numericValue,
+                        point.unit || SENSOR_UNITS[point.sensor_type] || "",
+                        timestamp
+                      );
+                    }, 0);
+                  }
+                }
+              });
+
+              return {
+                sensorData: newData,
+                status: {
+                  ...state.status,
+                  isSyncing: true,
+                  lastSync: new Date(),
+                  lastDataReceived: new Date(),
+                  isSystemActive: true,
+                },
+              };
+            }
+
             // Priorizar nuevo formato con evaluationType del backend mejorado
             if (data.evaluationType && data.evalValue !== undefined) {
               const timestamp = getTimestamp(data.timestamp);
-              setTimeout(() => {
-                get().addChartData(
-                  data.evaluationType!,
-                  data.evalValue!,
-                  data.unidad,
-                  timestamp
+              const numericValue =
+                typeof data.evalValue === "number"
+                  ? data.evalValue
+                  : parseFloat(String(data.evalValue));
+
+              if (!isNaN(numericValue)) {
+                // Agregar al historial en memoria
+                const historyPoint: SensorHistoryPoint = {
+                  timestamp,
+                  value: numericValue,
+                  sensor_type: data.evaluationType!,
+                  unit: data.unidad,
+                  formatted_time: timestamp.toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                  }),
+                };
+
+                // Agregar al buffer de historial (máximo 20 datos por sensor)
+                const currentHistory =
+                  state.sensorHistory[data.evaluationType!] || [];
+                const newHistory = [historyPoint, ...currentHistory].slice(
+                  0,
+                  20
                 );
-                get().evaluateRisk(data.evaluationType!, data.evalValue!);
-              }, 0);
+
+                setTimeout(() => {
+                  get().addChartData(
+                    data.evaluationType!,
+                    numericValue,
+                    data.unidad,
+                    timestamp
+                  );
+                  get().evaluateRisk(data.evaluationType!, numericValue);
+                }, 0);
+
+                return {
+                  sensorData: newData,
+                  sensorHistory: {
+                    ...state.sensorHistory,
+                    [data.evaluationType!]: newHistory,
+                  },
+                  status: {
+                    ...state.status,
+                    isSyncing: true,
+                    lastSync: new Date(),
+                    lastDataReceived: new Date(),
+                    isSystemActive: true,
+                  },
+                };
+              }
             }
             // Fallback mejorado para datos con sensor_type
-            else if (data.sensor_type && typeof data.valor === "number") {
+            else if (data.sensor_type && data.valor !== undefined) {
               const typeMap: Record<string, string> = {
                 Temperatura: "temperature",
                 Humedad: "humidity",
@@ -265,20 +370,68 @@ export const useSystemStore = create<SystemStore>()(
                 "Sensor de Distancia": "distance",
                 "Nivel de Luz": "light",
                 "CO2/Gases": "air_quality",
+                temperature: "temperature",
+                humidity: "humidity",
+                light: "light",
+                air_quality: "air_quality",
+                pressure: "pressure",
+                distance: "distance",
               };
 
               const evalType = typeMap[data.sensor_type];
               if (evalType) {
                 const timestamp = getTimestamp(data.timestamp);
-                setTimeout(() => {
-                  get().addChartData(
-                    evalType,
-                    data.valor,
-                    data.unidad,
-                    timestamp
+                const numericValue =
+                  typeof data.valor === "number"
+                    ? data.valor
+                    : parseFloat(String(data.valor));
+
+                if (!isNaN(numericValue)) {
+                  // Agregar al historial en memoria
+                  const historyPoint: SensorHistoryPoint = {
+                    timestamp,
+                    value: numericValue,
+                    sensor_type: evalType,
+                    unit: data.unidad,
+                    formatted_time: timestamp.toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit",
+                    }),
+                  };
+
+                  // Agregar al buffer de historial (máximo 20 datos por sensor)
+                  const currentHistory = state.sensorHistory[evalType] || [];
+                  const newHistory = [historyPoint, ...currentHistory].slice(
+                    0,
+                    20
                   );
-                  get().evaluateRisk(evalType, data.valor);
-                }, 0);
+
+                  setTimeout(() => {
+                    get().addChartData(
+                      evalType,
+                      numericValue,
+                      data.unidad,
+                      timestamp
+                    );
+                    get().evaluateRisk(evalType, numericValue);
+                  }, 0);
+
+                  return {
+                    sensorData: newData,
+                    sensorHistory: {
+                      ...state.sensorHistory,
+                      [evalType]: newHistory,
+                    },
+                    status: {
+                      ...state.status,
+                      isSyncing: true,
+                      lastSync: new Date(),
+                      lastDataReceived: new Date(),
+                      isSystemActive: true,
+                    },
+                  };
+                }
               }
             }
 
@@ -312,9 +465,54 @@ export const useSystemStore = create<SystemStore>()(
           }));
         },
 
+        // Obtener datos del historial en memoria
+        getHistoryData: (sensorType) => {
+          const history = get().sensorHistory;
+          if (sensorType) {
+            return history[sensorType] || [];
+          }
+          // Si no se especifica sensor, devolver todos los datos
+          return Object.values(history).flat().sort((a, b) => 
+            b.timestamp.getTime() - a.timestamp.getTime()
+          );
+        },
+
+        // Limpiar historial en memoria
+        clearHistoryData: () => {
+          set((state) => ({
+            sensorHistory: {},
+          }));
+        },
+
         // Agregar datos a las gráficas
         addChartData: (sensorType, value, unit, timestamp = new Date()) => {
           set((state) => {
+            // Validaciones de entrada para prevenir errores
+            if (!sensorType || value === null || value === undefined) {
+              console.warn("addChartData: Datos inválidos", {
+                sensorType,
+                value,
+                unit,
+                timestamp,
+              });
+              return state;
+            }
+
+            // Convertir value a número de forma segura
+            const numericValue =
+              typeof value === "number" ? value : parseFloat(String(value));
+            if (isNaN(numericValue)) {
+              console.warn("addChartData: Valor no numérico", {
+                sensorType,
+                value,
+              });
+              return state;
+            }
+
+            // Validar timestamp
+            const validTimestamp =
+              timestamp instanceof Date ? timestamp : new Date();
+
             const currentChartData = state.chartData[sensorType] || {
               sensorType,
               data: [],
@@ -323,14 +521,20 @@ export const useSystemStore = create<SystemStore>()(
             };
 
             const newDataPoint: ChartDataPoint = {
-              x: timestamp,
-              y: parseFloat(value.toFixed(2)),
+              x: validTimestamp,
+              y: Math.round(numericValue * 100) / 100, // Redondear a 2 decimales de forma segura
             };
 
             // Verificar si ya existe un punto muy similar (evitar duplicados)
             const isDuplicatePoint = currentChartData.data.some((point) => {
+              // Validar que point.x sea Date antes de usar getTime()
+              if (!(point.x instanceof Date)) {
+                console.warn("Punto de datos con timestamp inválido", point);
+                return false;
+              }
+
               const timeDiff = Math.abs(
-                point.x.getTime() - timestamp.getTime()
+                point.x.getTime() - validTimestamp.getTime()
               );
               const valueDiff = Math.abs(point.y - newDataPoint.y);
               return timeDiff < 2000 && valueDiff < 0.1; // 2 segundos y 0.1 de diferencia
@@ -340,8 +544,11 @@ export const useSystemStore = create<SystemStore>()(
               return state; // No agregar punto duplicado
             }
 
-            // Agregar nuevo punto al final y mantener los últimos 100 puntos para mejor historial
-            const updatedData = [...currentChartData.data, newDataPoint]
+            // Filtrar puntos con timestamps inválidos y agregar nuevo punto
+            const validData = currentChartData.data.filter(
+              (point) => point.x instanceof Date
+            );
+            const updatedData = [...validData, newDataPoint]
               .sort((a, b) => a.x.getTime() - b.x.getTime()) // Ordenar por tiempo
               .slice(-100); // Mantener los últimos 100 puntos
 

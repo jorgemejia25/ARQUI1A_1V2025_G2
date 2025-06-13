@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Test MQTT Connection - SIEPA</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 50px auto;
+        padding: 20px;
+        background-color: #f5f5f5;
+      }
+      .container {
+        background: white;
+        padding: 30px;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+      .status {
+        padding: 10px;
+        margin: 10px 0;
+        border-radius: 5px;
+        font-weight: bold;
+      }
+      .success {
+        background-color: #d4edda;
+        color: #155724;
+      }
+      .error {
+        background-color: #f8d7da;
+        color: #721c24;
+      }
+      .warning {
+        background-color: #fff3cd;
+        color: #856404;
+      }
+      .info {
+        background-color: #d1ecf1;
+        color: #0c5460;
+      }
+      #console {
+        background: #000;
+        color: #0f0;
+        padding: 15px;
+        border-radius: 5px;
+        height: 400px;
+        overflow-y: auto;
+        font-family: "Courier New", monospace;
+        font-size: 12px;
+        margin-top: 20px;
+      }
+      button {
+        background: #007bff;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 5px;
+        cursor: pointer;
+        margin: 5px;
+      }
+      button:hover {
+        background: #0056b3;
+      }
+      button:disabled {
+        background: #6c757d;
+        cursor: not-allowed;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🧪 Test de Conexión MQTT - Sistema SIEPA</h1>
+      <p>
+        Esta página prueba la conexión MQTT desde el navegador para diagnosticar
+        problemas.
+      </p>
+
+      <div id="status" class="status warning">🔄 Iniciando prueba...</div>
+
+      <div>
+        <button onclick="startTest()" id="startBtn">🔄 Iniciar Prueba</button>
+        <button onclick="testHistory()" id="historyBtn" disabled>
+          📈 Probar Historial
+        </button>
+        <button onclick="clearConsole()" id="clearBtn">
+          🗑️ Limpiar Consola
+        </button>
+      </div>
+
+      <div id="console"></div>
+    </div>
+
+    <script src="https://unpkg.com/mqtt@4.3.7/dist/mqtt.min.js"></script>
+    <script>
+      let client = null;
+      let isConnected = false;
+
+      function log(message, type = "info") {
+        const console = document.getElementById("console");
+        const time = new Date().toLocaleTimeString();
+        const emoji =
+          type === "error"
+            ? "❌"
+            : type === "success"
+              ? "✅"
+              : type === "warning"
+                ? "⚠️"
+                : "📝";
+        console.innerHTML += `<div>[${time}] ${emoji} ${message}</div>`;
+        console.scrollTop = console.scrollHeight;
+      }
+
+      function updateStatus(message, type = "info") {
+        const status = document.getElementById("status");
+        status.textContent = message;
+        status.className = `status ${type}`;
+      }
+
+      function clearConsole() {
+        document.getElementById("console").innerHTML = "";
+      }
+
+      function startTest() {
+        log("🧪 INICIANDO PRUEBA DE CONEXIÓN MQTT");
+        updateStatus("🔄 Conectando...", "warning");
+
+        const brokerUrl = "wss://broker.hivemq.com:8884/mqtt";
+        log(`🔗 Conectando a: ${brokerUrl}`);
+
+        const options = {
+          clientId: `test_frontend_${Math.random().toString(16).substr(2, 8)}`,
+          clean: true,
+          reconnectPeriod: 5000,
+          connectTimeout: 15000,
+          keepalive: 60,
+          protocolVersion: 4,
+        };
+
+        log(`⚙️ ID del cliente: ${options.clientId}`);
+
+        try {
+          if (client) {
+            client.end();
+          }
+
+          client = mqtt.connect(brokerUrl, options);
+
+          client.on("connect", () => {
+            log("✅ ¡CONECTADO AL BROKER MQTT!", "success");
+            updateStatus("✅ Conectado exitosamente", "success");
+            isConnected = true;
+            document.getElementById("historyBtn").disabled = false;
+
+            // Suscribirse a tópicos de prueba
+            const testTopics = [
+              "siepa/history",
+              "siepa/sensors/+",
+              "siepa/test",
+            ];
+
+            testTopics.forEach((topic) => {
+              client.subscribe(topic, (err) => {
+                if (err) {
+                  log(
+                    `❌ Error suscribiendo a ${topic}: ${err.message}`,
+                    "error"
+                  );
+                } else {
+                  log(`📡 Suscrito exitosamente a ${topic}`, "success");
+                }
+              });
+            });
+
+            // Enviar mensaje de prueba
+            setTimeout(() => {
+              const testMsg = {
+                test: true,
+                timestamp: Date.now(),
+                source: "test_page",
+                message: "Mensaje de prueba desde la página de test",
+              };
+
+              client.publish("siepa/test", JSON.stringify(testMsg), (err) => {
+                if (err) {
+                  log(
+                    `❌ Error enviando mensaje de prueba: ${err.message}`,
+                    "error"
+                  );
+                } else {
+                  log("📤 Mensaje de prueba enviado", "success");
+                }
+              });
+            }, 1000);
+          });
+
+          client.on("message", (topic, message) => {
+            const msgStr = message.toString();
+            log(
+              `📥 Mensaje en ${topic}: ${msgStr.substring(0, 100)}${msgStr.length > 100 ? "..." : ""}`
+            );
+
+            if (topic === "siepa/history") {
+              try {
+                const data = JSON.parse(msgStr);
+                log(
+                  `📈 HISTORIAL RECIBIDO: ${data.total_points || 0} puntos`,
+                  "success"
+                );
+              } catch (e) {
+                log(
+                  `📈 Respuesta de historial (no JSON): ${msgStr}`,
+                  "warning"
+                );
+              }
+            }
+          });
+
+          client.on("error", (error) => {
+            log(`❌ Error MQTT: ${error.message}`, "error");
+            updateStatus(`❌ Error: ${error.message}`, "error");
+            isConnected = false;
+            document.getElementById("historyBtn").disabled = true;
+          });
+
+          client.on("close", () => {
+            log("🔌 Conexión cerrada", "warning");
+            updateStatus("🔌 Conexión cerrada", "warning");
+            isConnected = false;
+            document.getElementById("historyBtn").disabled = true;
+          });
+
+          client.on("disconnect", () => {
+            log("📡 Desconectado del broker", "warning");
+            updateStatus("📡 Desconectado", "warning");
+            isConnected = false;
+            document.getElementById("historyBtn").disabled = true;
+          });
+
+          client.on("offline", () => {
+            log("📴 Cliente offline", "warning");
+            updateStatus("📴 Offline", "warning");
+            isConnected = false;
+            document.getElementById("historyBtn").disabled = true;
+          });
+
+          client.on("reconnect", () => {
+            log("🔄 Reintentando conexión...", "warning");
+            updateStatus("🔄 Reconectando...", "warning");
+          });
+        } catch (error) {
+          log(`❌ Error creando cliente: ${error.message}`, "error");
+          updateStatus(`❌ Error: ${error.message}`, "error");
+        }
+      }
+
+      function testHistory() {
+        if (!client || !isConnected) {
+          log("❌ No conectado - no se puede probar historial", "error");
+          return;
+        }
+
+        log("🔍 Enviando comando de historial...");
+
+        const historyCommand = {
+          sensor_type: "all",
+          max_points: 20,
+          timestamp: new Date().toISOString(),
+          source: "test_page",
+        };
+
+        client.publish(
+          "siepa/commands/history",
+          JSON.stringify(historyCommand),
+          { qos: 1 },
+          (err) => {
+            if (err) {
+              log(
+                `❌ Error enviando comando de historial: ${err.message}`,
+                "error"
+              );
+            } else {
+              log("📤 Comando de historial enviado exitosamente", "success");
+              log("⏰ Esperando respuesta del backend...");
+            }
+          }
+        );
+      }
+
+      // Auto-iniciar la prueba
+      window.addEventListener("load", () => {
+        setTimeout(startTest, 1000);
+      });
+    </script>
+  </body>
+</html>

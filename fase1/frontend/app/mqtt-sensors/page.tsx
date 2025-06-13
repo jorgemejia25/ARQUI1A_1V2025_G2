@@ -51,7 +51,7 @@ export default function MqttSensorsPage() {
     }));
 
     // Enviar comando MQTT
-    const topic = `siepa/commands/sensors/${sensorType}`;
+    const topic = `GRUPO2/commands/rasp01/sensors/${sensorType}`;
     const payload = {
       enabled: enabled,
       timestamp: new Date().toISOString(),
@@ -174,13 +174,13 @@ export default function MqttSensorsPage() {
       }
     });
     return Object.values(latest).filter(
-      (data) => data.topic !== "siepa/sensors"
+      (data) => data.topic !== "GRUPO2/sensores/rasp01"
     );
   };
 
   const getCompleteSystemData = () => {
     return sensorData.find(
-      (data) => data.topic === "siepa/sensors" && data.complete_data
+      (data) => data.topic === "GRUPO2/sensores/rasp01" && data.complete_data
     );
   };
 
@@ -194,8 +194,7 @@ export default function MqttSensorsPage() {
           🌟 Sistema SIEPA - Monitor MQTT
         </h1>
         <p className="text-gray-600 dark:text-gray-400">
-          Conectado a: Mosquitto Local (ws://localhost:9001) | Tópicos:
-          siepa/sensors/*
+          Conectado a: HiveMQ Public Broker | Tópicos: GRUPO2/sensores/rasp01/*
         </p>
       </div>
 
@@ -234,7 +233,7 @@ export default function MqttSensorsPage() {
                 {isConnected ? "🟢" : "🔴"}
                 {isConnected
                   ? " Recibiendo datos del sistema SIEPA"
-                  : " Sin conexión a Mosquitto"}
+                  : " Sin conexión a HiveMQ"}
               </span>
             </div>
             <div className="flex items-center gap-4 text-sm">
@@ -324,7 +323,7 @@ export default function MqttSensorsPage() {
                     Estado: {enabled ? "Habilitado" : "Deshabilitado"}
                   </div>
                   <div className="text-xs text-gray-400 mt-1">
-                    Tópico: siepa/commands/sensors/{sensorType}
+                    Tópico: GRUPO2/commands/rasp01/sensors/{sensorType}
                   </div>
                 </div>
               );
@@ -526,7 +525,8 @@ export default function MqttSensorsPage() {
                     Ejecute el sistema SIEPA en el backend para ver datos aquí.
                   </p>
                   <code className="text-xs block mt-2 p-2 bg-gray-100 dark:bg-gray-800 rounded">
-                    python3 demo_mosquitto.py test
+                    Asegúrese de que el backend esté conectado a
+                    GRUPO2/sensores/rasp01
                   </code>
                 </div>
               )}
@@ -540,7 +540,7 @@ export default function MqttSensorsPage() {
 
                 // Verificar si es un mensaje de estado de sensor
                 const isStatusMessage = data.topic.startsWith(
-                  "siepa/status/sensors/"
+                  "GRUPO2/status/rasp01/sensors/"
                 );
                 const sensorType = isStatusMessage
                   ? data.topic.split("/").pop()

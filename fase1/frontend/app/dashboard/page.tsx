@@ -25,6 +25,7 @@ import {
   Cloudy,
   Cpu,
   Droplets,
+  Fan,
   Home,
   Lightbulb,
   Settings,
@@ -34,6 +35,7 @@ import {
 import { useEffect, useState } from "react";
 
 import AlertsPanel from "@/components/organisms/AlertsPanel";
+import FanControlPanel from "@/components/organisms/FanControlPanel";
 import StatusOverviewGrid from "@/components/organisms/StatusOverviewGrid";
 import { useMqtt } from "../mqtt-sensors/useMqtt";
 
@@ -51,7 +53,8 @@ type SensorId =
   | "air_quality"
   | "lighting"
   | "motion_detection"
-  | "pressure";
+  | "pressure"
+  | "fan";
 
 export default function Dashboard() {
   // Estado inicial de los sensores
@@ -61,6 +64,7 @@ export default function Dashboard() {
     lighting: true,
     motion_detection: true,
     pressure: true,
+    fan: true,
   });
 
   const [statusData, setStatusData] = useState<StatusItem[]>([
@@ -104,16 +108,25 @@ export default function Dashboard() {
       icon: Cloudy,
       color: "warning",
     },
+    {
+      id: "fan",
+      label: "Ventilador DC",
+      value: "Apagado",
+      trend: "Motor inactivo",
+      icon: Fan,
+      color: "danger",
+    },
   ]);
 
   // Conectar al MQTT para obtener datos reales
   const { isConnected, sensorData, connectionStatus, publishCommand } = useMqtt(
     "wss://broker.hivemq.com:8884/mqtt",
     [
-      "siepa/sensors",
-      "siepa/sensors/+",
-      "siepa/actuators/+",
-      "siepa/status/sensors/+",
+      "GRUPO2/sensores/rasp01",
+      "GRUPO2/sensores/rasp01/+",
+      "GRUPO2/actuadores/rasp01",
+      "GRUPO2/actuadores/rasp01/+",
+      "GRUPO2/status/rasp01/sensors/+",
     ],
     (sensorType: string, enabled: boolean) => {
       setSensorStates((prev) => ({
@@ -131,7 +144,7 @@ export default function Dashboard() {
       // Filtrar solo datos reales de sensores, no mensajes de estado
       const actualSensorData = sensorData.filter((data) => {
         // Filtrar mensajes de estado de sensores
-        if (data.topic.startsWith("siepa/status/sensors/")) {
+        if (data.topic.startsWith("GRUPO2/status/rasp01/sensors/")) {
           return false;
         }
         // Filtrar valores que sean objetos JSON de estado
@@ -293,6 +306,35 @@ export default function Dashboard() {
                     : ("warning" as const),
               };
 
+            case "fan":
+              const fan = latestData["ventilador"];
+              const fanEnabled = sensorStates.fan;
+
+              return {
+                ...item,
+                value: !fanEnabled
+                  ? "Apagado"
+                  : fan?.valor === "ON"
+                    ? "Encendido"
+                    : fan?.valor === "OFF"
+                      ? "Apagado"
+                      : "Estado desconocido",
+                trend: !fanEnabled
+                  ? "Motor deshabilitado"
+                  : fan?.valor === "ON"
+                    ? "Motor funcionando"
+                    : fan?.valor === "OFF"
+                      ? "Motor detenido"
+                      : "Esperando datos...",
+                color: !fanEnabled
+                  ? ("danger" as const)
+                  : fan?.valor === "ON"
+                    ? ("success" as const)
+                    : fan?.valor === "OFF"
+                      ? ("warning" as const)
+                      : ("warning" as const),
+              };
+
             default:
               return item;
           }
@@ -399,10 +441,71 @@ export default function Dashboard() {
           timestamp: pressure.timestamp,
         });
       }
+
+      // Alerta de ventilador
+      const fan = latestData["ventilador"];
+      if (fan?.valor === "ON" && sensorStates.fan) {
+        newAlerts.push({
+          id: "fan_active",
+          title: "Ventilador Activo",
+          description: "El ventilador DC está funcionando correctamente",
+          level: "info" as const,
+          timestamp: fan.timestamp,
+        });
+      } else if (fan?.valor === "ERROR") {
+        newAlerts.push({
+          id: "fan_error",
+          title: "Error en Ventilador",
+          description: "Se detectó un error en el ventilador DC",
+          level: "danger" as const,
+          timestamp: fan.timestamp,
+        });
+      }
     }
 
     setAlerts(newAlerts);
   }, [sensorData, isConnected, connectionStatus]);
+
+  // Estado específico del ventilador
+  const fanData = sensorData.find(
+    (data) =>
+      data.sensor_type?.toLowerCase() === "ventilador" ||
+      data.topic.includes("fan") ||
+      data.topic.includes("motor")
+  );
+
+  // Handler específico para el ventilador
+  const handleToggleFan = () => {
+    const newState = !sensorStates.fan;
+
+    const payload = {
+      enabled: newState,
+      timestamp: new Date().toISOString(),
+      source: "frontend",
+    };
+
+    console.log(
+      `🔧 Sending fan command to: GRUPO2/commands/rasp01/actuators/fan`
+    );
+    console.log(`🔧 Payload:`, payload);
+    console.log(`🔧 Current fan state: ${sensorStates.fan} -> ${newState}`);
+
+    const success = publishCommand(
+      "GRUPO2/commands/rasp01/actuators/fan",
+      payload
+    );
+    if (success) {
+      console.log(
+        `✅ Fan command sent successfully: ${newState ? "ON" : "OFF"}`
+      );
+      setSensorStates((prev) => ({
+        ...prev,
+        fan: newState,
+      }));
+    } else {
+      console.error(`❌ Error sending fan command`);
+    }
+  };
 
   // Add toggle handler
   const handleTogglePower = (id: string) => {
@@ -415,31 +518,43 @@ export default function Dashboard() {
       switch (id) {
         case "temperature_humidity":
           mqttCommands.push(
-            { topic: "siepa/commands/sensors/temperature", enabled: newState },
-            { topic: "siepa/commands/sensors/humidity", enabled: newState }
+            {
+              topic: "GRUPO2/commands/rasp01/sensors/temperature",
+              enabled: newState,
+            },
+            {
+              topic: "GRUPO2/commands/rasp01/sensors/humidity",
+              enabled: newState,
+            }
           );
           break;
         case "lighting":
           mqttCommands.push({
-            topic: "siepa/commands/sensors/light",
+            topic: "GRUPO2/commands/rasp01/sensors/light",
             enabled: newState,
           });
           break;
         case "motion_detection":
           mqttCommands.push({
-            topic: "siepa/commands/sensors/distance",
+            topic: "GRUPO2/commands/rasp01/sensors/distance",
             enabled: newState,
           });
           break;
         case "pressure":
           mqttCommands.push({
-            topic: "siepa/commands/sensors/pressure",
+            topic: "GRUPO2/commands/rasp01/sensors/pressure",
+            enabled: newState,
+          });
+          break;
+        case "fan":
+          mqttCommands.push({
+            topic: "GRUPO2/commands/rasp01/actuators/fan",
             enabled: newState,
           });
           break;
         default:
           mqttCommands.push({
-            topic: `siepa/commands/sensors/${id}`,
+            topic: `GRUPO2/commands/rasp01/sensors/${id}`,
             enabled: newState,
           });
       }
@@ -513,6 +628,26 @@ export default function Dashboard() {
           onViewDetails={(id) => console.log("View details for:", id)}
           sensorStates={sensorStates}
           onTogglePower={handleTogglePower}
+        />
+      </section>
+
+      {/* Fan Control Panel */}
+      <section className="space-y-4">
+        <h2 className="text-xl font-semibold text-foreground">
+          Control de Actuadores
+        </h2>
+        <FanControlPanel
+          isConnected={isConnected}
+          fanState={
+            fanData
+              ? {
+                  valor: fanData.valor,
+                  timestamp: fanData.timestamp,
+                }
+              : undefined
+          }
+          onToggleFan={handleToggleFan}
+          isEnabled={sensorStates.fan}
         />
       </section>
 
