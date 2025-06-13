@@ -9,7 +9,7 @@ import { Chip } from "@heroui/chip";
 import { Divider } from "@heroui/divider";
 import { Switch } from "@heroui/switch";
 import TestAlertsButton from "@/components/molecules/TestAlertsButton";
-import { useMqtt } from "./useMqtt";
+import { useMqttContext } from "@/lib/providers/MqttProvider";
 import { useState } from "react";
 import { useSystemStore } from "@/lib/store/useSystemStore";
 
@@ -21,6 +21,10 @@ export default function MqttSensorsPage() {
     clearSensorData,
   } = useSystemStore();
 
+  // Usar el contexto MQTT global en lugar del hook local
+  const { isConnected, connectionStatus, reconnect, publishCommand } =
+    useMqttContext();
+
   // Estado local para los switches de sensores
   const [sensorStates, setSensorStates] = useState({
     temperature: true,
@@ -28,34 +32,14 @@ export default function MqttSensorsPage() {
     distance: true,
     light: true,
     air_quality: true,
+    pressure: true,
   });
 
-  const {
-    isConnected,
-    sensorData,
-    connectionStatus,
-    clearData,
-    reconnect,
-    publishCommand,
-  } = useMqtt(
-    "wss://broker.hivemq.com:8884/mqtt",
-    [
-      "siepa/sensors",
-      "siepa/sensors/+",
-      "siepa/actuators/+",
-      "siepa/status/sensors/+",
-    ],
-    (sensorType: string, enabled: boolean) => {
-      setSensorStates((prev) => ({
-        ...prev,
-        [sensorType]: enabled,
-      }));
-    }
-  );
+  // Usar los datos del store en lugar de datos locales
+  const sensorData = storeSensorData;
 
   // Función para limpiar todos los datos
   const handleClearData = () => {
-    clearData();
     clearSensorData();
   };
 
@@ -67,7 +51,7 @@ export default function MqttSensorsPage() {
     }));
 
     // Enviar comando MQTT
-    const topic = `siepa/commands/sensors/${sensorType}`;
+    const topic = `GRUPO2/commands/rasp01/sensors/${sensorType}`;
     const payload = {
       enabled: enabled,
       timestamp: new Date().toISOString(),
@@ -106,6 +90,12 @@ export default function MqttSensorsPage() {
           name: "Calidad del Aire",
           color: "success" as const,
         };
+      case "pressure":
+        return {
+          icon: "🌬️",
+          name: "Presión",
+          color: "primary" as const,
+        };
       default:
         return { icon: "📡", name: "Sensor", color: "default" as const };
     }
@@ -143,6 +133,8 @@ export default function MqttSensorsPage() {
         return "🔔";
       case "Sistema Completo":
         return "📊";
+      case "Presión":
+        return "🌬️";
       default:
         return "📡";
     }
@@ -164,6 +156,8 @@ export default function MqttSensorsPage() {
         return "default";
       case "Sistema Completo":
         return "primary";
+      case "Presión":
+        return "primary";
       default:
         return "default";
     }
@@ -180,13 +174,13 @@ export default function MqttSensorsPage() {
       }
     });
     return Object.values(latest).filter(
-      (data) => data.topic !== "siepa/sensors"
+      (data) => data.topic !== "GRUPO2/sensores/rasp01"
     );
   };
 
   const getCompleteSystemData = () => {
     return sensorData.find(
-      (data) => data.topic === "siepa/sensors" && data.complete_data
+      (data) => data.topic === "GRUPO2/sensores/rasp01" && data.complete_data
     );
   };
 
@@ -200,8 +194,7 @@ export default function MqttSensorsPage() {
           🌟 Sistema SIEPA - Monitor MQTT
         </h1>
         <p className="text-gray-600 dark:text-gray-400">
-          Conectado a: Mosquitto Local (ws://localhost:9001) | Tópicos:
-          siepa/sensors/*
+          Conectado a: HiveMQ Public Broker | Tópicos: GRUPO2/sensores/rasp01/*
         </p>
       </div>
 
@@ -240,7 +233,7 @@ export default function MqttSensorsPage() {
                 {isConnected ? "🟢" : "🔴"}
                 {isConnected
                   ? " Recibiendo datos del sistema SIEPA"
-                  : " Sin conexión a Mosquitto"}
+                  : " Sin conexión a HiveMQ"}
               </span>
             </div>
             <div className="flex items-center gap-4 text-sm">
@@ -330,7 +323,7 @@ export default function MqttSensorsPage() {
                     Estado: {enabled ? "Habilitado" : "Deshabilitado"}
                   </div>
                   <div className="text-xs text-gray-400 mt-1">
-                    Tópico: siepa/commands/sensors/{sensorType}
+                    Tópico: GRUPO2/commands/rasp01/sensors/{sensorType}
                   </div>
                 </div>
               );
@@ -382,9 +375,36 @@ export default function MqttSensorsPage() {
                       displayKey = "💡 Luz";
                       displayValue = value ? "Detectada" : "No detectada";
                       break;
+                    case "light_lux":
+                      displayKey = "💡 Nivel de Luz";
+                      unit = "lux";
+                      break;
+                    case "light_voltage":
+                      displayKey = "💡 Voltaje LDR";
+                      unit = "V";
+                      displayValue = Number(value).toFixed(2);
+                      break;
                     case "air_quality_bad":
                       displayKey = "💨 Calidad del Aire";
                       displayValue = value ? "Malo" : "Bueno";
+                      break;
+                    case "air_quality_ppm":
+                      displayKey = "💨 CO2/Gases";
+                      unit = "ppm";
+                      break;
+                    case "air_quality_voltage":
+                      displayKey = "💨 Voltaje MQ135";
+                      unit = "V";
+                      displayValue = Number(value).toFixed(2);
+                      break;
+                    case "pressure":
+                      displayKey = "🌬️ Presión";
+                      unit = "hPa";
+                      displayValue = Number(value).toFixed(1);
+                      break;
+                    case "buzzer_state":
+                      displayKey = "🔔 Buzzer";
+                      displayValue = value ? "Activado" : "Desactivado";
                       break;
                   }
 
@@ -505,7 +525,8 @@ export default function MqttSensorsPage() {
                     Ejecute el sistema SIEPA en el backend para ver datos aquí.
                   </p>
                   <code className="text-xs block mt-2 p-2 bg-gray-100 dark:bg-gray-800 rounded">
-                    python3 demo_mosquitto.py test
+                    Asegúrese de que el backend esté conectado a
+                    GRUPO2/sensores/rasp01
                   </code>
                 </div>
               )}
@@ -516,6 +537,44 @@ export default function MqttSensorsPage() {
                 const { icon, name, color } = getSensorDisplayInfo(
                   data.sensor_type || "Sensor"
                 );
+
+                // Verificar si es un mensaje de estado de sensor
+                const isStatusMessage = data.topic.startsWith(
+                  "GRUPO2/status/rasp01/sensors/"
+                );
+                const sensorType = isStatusMessage
+                  ? data.topic.split("/").pop()
+                  : null;
+                const isEnabled =
+                  isStatusMessage &&
+                  sensorStates[sensorType as keyof typeof sensorStates];
+
+                // No mostrar información detallada si el sensor está deshabilitado
+                if (isStatusMessage && !isEnabled) {
+                  return (
+                    <div
+                      key={index}
+                      className="border rounded-lg p-4 bg-red-50 dark:bg-red-900/20"
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="flex gap-2">
+                          <Chip size="sm" variant="bordered" color="danger">
+                            {icon} {name} - Apagado
+                          </Chip>
+                        </div>
+                        <span className="text-xs text-gray-500">
+                          {data.timestamp}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-600 dark:text-gray-400">
+                          Sensor deshabilitado
+                        </span>
+                      </div>
+                    </div>
+                  );
+                }
+
                 return (
                   <div
                     key={index}

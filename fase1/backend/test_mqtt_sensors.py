@@ -76,17 +76,17 @@ def test_sensor_mqtt_integration(mode='testing', duration=30):
                 
                 # Mostrar tópicos donde se publican los datos
                 print("   📤 Tópicos MQTT:")
-                print(f"      • siepa/sensors (datos completos)")
-                print(f"      • siepa/sensors/temperature: {sensor_data.get('temperature')}")
-                print(f"      • siepa/sensors/humidity: {sensor_data.get('humidity')}")
-                print(f"      • siepa/sensors/distance: {sensor_data.get('distance')}")
-                print(f"      • siepa/sensors/light: {sensor_data.get('light')}")
-                print(f"      • siepa/sensors/air_quality: {sensor_data.get('air_quality_bad')}")
+                print(f"      • GRUPO2/sensores/rasp01 (datos completos)")
+                print(f"      • GRUPO2/sensores/rasp01/temperatura: {sensor_data.get('temperature')}")
+                print(f"      • GRUPO2/sensores/rasp01/humedad: {sensor_data.get('humidity')}")
+                print(f"      • GRUPO2/sensores/rasp01/distancia: {sensor_data.get('distance')}")
+                print(f"      • GRUPO2/sensores/rasp01/luz: {sensor_data.get('light')}")
+                print(f"      • GRUPO2/sensores/rasp01/gas: {sensor_data.get('air_quality_bad')}")
                 
                 # Si hay aire malo, enviar estado del buzzer
                 if sensor_data.get('air_quality_bad'):
                     buzzer_success = system.mqtt_manager.publish_buzzer_state(True)
-                    print(f"      • siepa/actuators/buzzer: True {'✅' if buzzer_success else '❌'}")
+                    print(f"      • GRUPO2/actuadores/rasp01/buzzer: True {'✅' if buzzer_success else '❌'}")
             else:
                 print("   📡 MQTT no conectado - datos no enviados")
             

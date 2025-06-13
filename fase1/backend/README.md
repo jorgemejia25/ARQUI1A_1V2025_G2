@@ -240,25 +240,25 @@ backend/
 
 ### Publicación (Sistema → Frontend)
 ```
-siepa/sensors                    # Datos completos (JSON)
-siepa/sensors/temperature        # Temperatura (°C)
-siepa/sensors/humidity          # Humedad (%)
-siepa/sensors/distance          # Distancia (cm)
-siepa/sensors/light             # Luz (true/false)
-siepa/sensors/air_quality       # Calidad aire (true=malo)
-siepa/actuators/buzzer          # Estado buzzer (JSON)
+GRUPO2/sensores/rasp01                    # Datos completos (JSON)
+GRUPO2/sensores/rasp01/temperatura       # Temperatura (°C)
+GRUPO2/sensores/rasp01/humedad          # Humedad (%)
+GRUPO2/sensores/rasp01/distancia        # Distancia (cm)
+GRUPO2/sensores/rasp01/luz              # Luz (true/false)
+GRUPO2/sensores/rasp01/gas              # Calidad aire (true=malo)
+GRUPO2/actuadores/rasp01/buzzer         # Estado buzzer (JSON)
 ```
 
 ### Suscripción (Frontend → Sistema)
 ```
-siepa/commands/buzzer           # Control del buzzer
-siepa/commands/system           # Comandos del sistema
-siepa/commands/sensors/+        # Control de sensores
+GRUPO2/commands/rasp01/buzzer           # Control del buzzer
+GRUPO2/commands/rasp01/system           # Comandos del sistema
+GRUPO2/commands/rasp01/sensors/+        # Control de sensores
 ```
 
 ### Formato de Datos
 ```json
-// siepa/sensors
+// GRUPO2/sensores/rasp01
 {
   "temperature": 25.6,
   "humidity": 60.3,
@@ -270,7 +270,7 @@ siepa/commands/sensors/+        # Control de sensores
   "system": "SIEPA"
 }
 
-// siepa/actuators/buzzer
+// GRUPO2/actuadores/rasp01/buzzer
 {
   "state": true,
   "timestamp": 1749175125.395273,

@@ -58,12 +58,12 @@ class SIEPAMQTTMonitor:
             self.connected = True
             print("✅ Conectado a Mosquitto broker")
             
-            # Suscribirse a todos los tópicos SIEPA
+            # Suscribirse a todos los tópicos GRUPO2
             topics = [
-                'siepa/sensors',
-                'siepa/sensors/+',  # Wildcard para todos los sensores individuales
-                'siepa/actuators/+',  # Wildcard para todos los actuadores
-                'siepa/commands/+'   # Wildcard para todos los comandos
+                'GRUPO2/sensores/rasp01',
+                'GRUPO2/sensores/rasp01/+',  # Wildcard para todos los sensores individuales
+                'GRUPO2/actuadores/rasp01/+',  # Wildcard para todos los actuadores
+                'GRUPO2/commands/rasp01/+'   # Wildcard para todos los comandos
             ]
             
             for topic in topics:

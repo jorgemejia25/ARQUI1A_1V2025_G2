@@ -1,8 +1,12 @@
 # Sistema SIEPA - Dependencias del Backend
+# Optimizado para Raspberry Pi
 
 # ============== DEPENDENCIAS CORE ==============
 # Comunicación MQTT (opcional, pero recomendado)
 paho-mqtt>=1.6.0
+
+# Base de datos SQLite optimizada (viene con Python, pero especificamos versión)
+# sqlite3 incluido en Python estándar
 
 # ============== DEPENDENCIAS PARA RASPBERRY PI (MODO REAL) ==============
 # GPIO y sensores (solo en Raspberry Pi)
@@ -11,6 +15,9 @@ adafruit-circuitpython-dht>=3.7.0
 
 # MCP3008 ADC para sensores analógicos (LDR y MQ135)
 adafruit-circuitpython-mcp3xxx>=1.4.0
+
+# BMP280 sensor de presión atmosférica
+adafruit-circuitpython-bmp280>=3.2.0
 
 # Display LCD I2C
 RPLCD>=1.3.0

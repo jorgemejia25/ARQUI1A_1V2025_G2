@@ -11,18 +11,33 @@ SENSOR_CONFIG = {
     'ULTRASONIC_TRIG_PIN': 23,
     'ULTRASONIC_ECHO_PIN': 24,
     
-    # LDR - Fotorresistencia
-    'LDR_PIN': 17,
+    # LDR - Fotorresistencia (MCP3008 Canal 0)
+    'LDR_CHANNEL': 0,
     
-    # MQ135 - Calidad del aire
-    'MQ135_PIN': 27,
+    # MQ135 - Calidad del aire (MCP3008 Canal 1)
+    'MQ135_CHANNEL': 1,
     
     # Buzzer
     'BUZZER_PIN': 22,
     
+    # Motor
+    'MOTOR_PIN': 21,
+    
+    
+    # LEDs de Alerta
+    'LED_TEMP': 5,      # LED Rojo - Temperatura
+    'LED_HUM': 6,       # LED Amarillo - Humedad
+    'LED_LUZ': 13,      # LED Verde - Luz
+    'LED_AIRE': 19,     # LED Azul - Calidad del aire
+    
+    # BMP280 - Sensor de presión
+    'BMP280_I2C_ADDRESS': 0x76,
+    'BMP280_SEA_LEVEL_PRESSURE': 1013.25,  # hPa
+    
     # Intervalos de lectura (segundos)
     'READ_INTERVAL': 2,
     'DISPLAY_REFRESH': 2,
+    'ALERT_DURATION': 5,  # Duración de activación de LEDs
 }
 
 # ============== CONFIGURACIÓN DE DISPLAY ==============
@@ -39,13 +54,18 @@ MQTT_CONFIG = {
     'USERNAME': None,
     'PASSWORD': None,
     'TOPICS': {
-        'SENSORS': 'siepa/sensors',
-        'TEMPERATURE': 'siepa/sensors/temperature',
-        'HUMIDITY': 'siepa/sensors/humidity',
-        'DISTANCE': 'siepa/sensors/distance',
-        'LIGHT': 'siepa/sensors/light',
-        'AIR_QUALITY': 'siepa/sensors/air_quality',
-        'BUZZER': 'siepa/actuators/buzzer',
+        'SENSORS': 'GRUPO2/sensores/rasp01',
+        'TEMPERATURE': 'GRUPO2/sensores/rasp01/temperatura',
+        'HUMIDITY': 'GRUPO2/sensores/rasp01/humedad',
+        'DISTANCE': 'GRUPO2/sensores/rasp01/distancia',
+        'LIGHT': 'GRUPO2/sensores/rasp01/luz',
+        'AIR_QUALITY': 'GRUPO2/sensores/rasp01/gas',
+        'PRESSURE': 'GRUPO2/sensores/rasp01/presion',
+        'BUZZER': 'GRUPO2/actuadores/rasp01/buzzer',
+        'LEDS': 'GRUPO2/actuadores/rasp01/leds',
+        'MOTOR': 'GRUPO2/actuadores/rasp01/motor',
+        'FAN': 'GRUPO2/actuadores/rasp01/fan',  # Alias para el motor
+        'HISTORY': 'GRUPO2/history/rasp01',  # Para datos históricos
     },
     'QOS': 1,
     'RETAIN': False,
@@ -64,14 +84,27 @@ SIMULATION_RANGES = {
     'TEMPERATURE': {'min': 18, 'max': 32},
     'HUMIDITY': {'min': 40, 'max': 80},
     'DISTANCE': {'min': 5, 'max': 200},
-    'LIGHT_PROBABILITY': 0.5,  # 50% probabilidad de luz
-    'BAD_AIR_PROBABILITY': 0.2,  # 20% probabilidad de aire malo
+    'LIGHT': {'min': 0, 'max': 1000},  # lux
+    'AIR_QUALITY': {'min': 0, 'max': 1000},  # ppm
+    'PRESSURE': {'min': 1000, 'max': 1030},  # hPa
 }
 
 # ============== CONFIGURACIÓN DE ALERTAS ==============
 ALERT_CONFIG = {
-    'TEMPERATURE': {'min': 15, 'max': 35},
-    'HUMIDITY': {'min': 30, 'max': 90},
-    'DISTANCE': {'min': 10, 'max': 150},
+    'TEMPERATURE': {'min': 15, 'max': 30},  # °C - Activar LED si está fuera del rango
+    'HUMIDITY': {'min': 30, 'max': 80},     # % - Activar LED si está fuera del rango
+    'LIGHT': {'max': 900},                  # lux - Activar LED si > 900
+    'AIR_QUALITY': {'max': 400},            # ppm - Activar LED y buzzer si > 400
     'BUZZER_ON_BAD_AIR': True,
+    'LED_ALERT_DURATION': 5,  # segundos
+}
+
+# ============== UMBRALES DE SENSORES ==============
+SENSOR_THRESHOLDS = {
+    'LIGHT': {
+        'DETECTION_THRESHOLD': 300,  # lux - Por encima de este valor hay luz detectada
+    },
+    'AIR_QUALITY': {
+        'BAD_AIR_THRESHOLD': 400,    # ppm - Por encima de este valor el aire es malo
+    },
 } 

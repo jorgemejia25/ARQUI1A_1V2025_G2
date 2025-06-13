@@ -8,7 +8,8 @@ from .settings import (
     MQTT_CONFIG,
     SYSTEM_CONFIG,
     SIMULATION_RANGES,
-    ALERT_CONFIG
+    ALERT_CONFIG,
+    SENSOR_THRESHOLDS
 )
 
 __all__ = [
@@ -17,5 +18,6 @@ __all__ = [
     'MQTT_CONFIG',
     'SYSTEM_CONFIG',
     'SIMULATION_RANGES',
-    'ALERT_CONFIG'
+    'ALERT_CONFIG',
+    'SENSOR_THRESHOLDS'
 ] 

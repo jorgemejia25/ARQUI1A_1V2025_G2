@@ -25,6 +25,7 @@ import {
   Cloudy,
   Cpu,
   Droplets,
+  Fan,
   Home,
   Lightbulb,
   Settings,
@@ -34,7 +35,7 @@ import {
 import { useEffect, useState } from "react";
 
 import AlertsPanel from "@/components/organisms/AlertsPanel";
-import EnergyConsumptionPanel from "@/components/organisms/EnergyConsumptionPanel";
+import FanControlPanel from "@/components/organisms/FanControlPanel";
 import StatusOverviewGrid from "@/components/organisms/StatusOverviewGrid";
 import { useMqtt } from "../mqtt-sensors/useMqtt";
 
@@ -47,7 +48,25 @@ type StatusItem = {
   color: "success" | "danger" | "warning" | "primary";
 };
 
+type SensorId =
+  | "temperature_humidity"
+  | "air_quality"
+  | "lighting"
+  | "motion_detection"
+  | "pressure"
+  | "fan";
+
 export default function Dashboard() {
+  // Estado inicial de los sensores
+  const [sensorStates, setSensorStates] = useState<Record<SensorId, boolean>>({
+    temperature_humidity: true,
+    air_quality: true,
+    lighting: true,
+    motion_detection: true,
+    pressure: true,
+    fan: true,
+  });
+
   const [statusData, setStatusData] = useState<StatusItem[]>([
     {
       id: "temperature_humidity",
@@ -81,12 +100,40 @@ export default function Dashboard() {
       icon: Activity,
       color: "warning",
     },
+    {
+      id: "pressure",
+      label: "Presión Atmosférica",
+      value: "-- hPa",
+      trend: "Esperando datos...",
+      icon: Cloudy,
+      color: "warning",
+    },
+    {
+      id: "fan",
+      label: "Ventilador DC",
+      value: "Apagado",
+      trend: "Motor inactivo",
+      icon: Fan,
+      color: "danger",
+    },
   ]);
 
   // Conectar al MQTT para obtener datos reales
-  const { isConnected, sensorData, connectionStatus } = useMqtt(
+  const { isConnected, sensorData, connectionStatus, publishCommand } = useMqtt(
     "wss://broker.hivemq.com:8884/mqtt",
-    ["siepa/sensors", "siepa/sensors/+", "siepa/actuators/+"]
+    [
+      "GRUPO2/sensores/rasp01",
+      "GRUPO2/sensores/rasp01/+",
+      "GRUPO2/actuadores/rasp01",
+      "GRUPO2/actuadores/rasp01/+",
+      "GRUPO2/status/rasp01/sensors/+",
+    ],
+    (sensorType: string, enabled: boolean) => {
+      setSensorStates((prev) => ({
+        ...prev,
+        [sensorType]: enabled,
+      }));
+    }
   );
 
   // Actualizar statusData cuando lleguen nuevos datos del MQTT
@@ -94,8 +141,25 @@ export default function Dashboard() {
     if (sensorData.length > 0) {
       const latestData: { [key: string]: any } = {};
 
-      // Obtener los datos más recientes de cada sensor
-      sensorData.forEach((data) => {
+      // Filtrar solo datos reales de sensores, no mensajes de estado
+      const actualSensorData = sensorData.filter((data) => {
+        // Filtrar mensajes de estado de sensores
+        if (data.topic.startsWith("GRUPO2/status/rasp01/sensors/")) {
+          return false;
+        }
+        // Filtrar valores que sean objetos JSON de estado
+        if (
+          typeof data.valor === "object" &&
+          data.valor?.sensor &&
+          data.valor?.enabled !== undefined
+        ) {
+          return false;
+        }
+        return true;
+      });
+
+      // Obtener los datos más recientes de cada sensor real
+      actualSensorData.forEach((data) => {
         const sensorType = data.sensor_type?.toLowerCase();
         if (
           sensorType &&
@@ -113,24 +177,58 @@ export default function Dashboard() {
             case "temperature_humidity":
               const temp = latestData["temperatura"];
               const hum = latestData["humedad"];
+
+              // Verificar si los sensores están habilitados
+              const tempEnabled = sensorStates.temperature_humidity;
+              const humEnabled = sensorStates.temperature_humidity;
+
+              let tempValue = "--";
+              let humValue = "--";
+
+              if (
+                tempEnabled &&
+                temp?.valor &&
+                typeof temp.valor === "number"
+              ) {
+                tempValue = temp.valor.toString();
+              }
+
+              if (humEnabled && hum?.valor && typeof hum.valor === "number") {
+                humValue = hum.valor.toString();
+              }
+
               return {
                 ...item,
-                value: `${temp?.valor || "--"} °C / ${hum?.valor || "--"} %`,
-                trend: isConnected ? "En línea" : "Desconectado",
+                value: `${tempValue} °C / ${humValue} %`,
+                trend:
+                  !tempEnabled || !humEnabled
+                    ? "Sensor apagado"
+                    : isConnected
+                      ? "En línea"
+                      : "Desconectado",
                 color:
-                  temp?.valor && hum?.valor
-                    ? ("success" as const)
-                    : ("warning" as const),
+                  !tempEnabled || !humEnabled
+                    ? ("danger" as const)
+                    : temp?.valor && hum?.valor
+                      ? ("success" as const)
+                      : ("warning" as const),
               };
 
             case "air_quality":
               const airQuality = latestData["calidad del aire"];
+              const airEnabled = sensorStates.air_quality;
+
               return {
                 ...item,
-                value: airQuality?.valor || "Esperando...",
-                trend: airQuality?.unidad || "Esperando datos...",
-                color:
-                  airQuality?.valor === "BUENA"
+                value: !airEnabled
+                  ? "Apagado"
+                  : airQuality?.valor || "Esperando...",
+                trend: !airEnabled
+                  ? "Sensor apagado"
+                  : airQuality?.unidad || "Esperando datos...",
+                color: !airEnabled
+                  ? ("danger" as const)
+                  : airQuality?.valor === "BUENA"
                     ? ("success" as const)
                     : airQuality?.valor === "MALA"
                       ? ("danger" as const)
@@ -139,12 +237,19 @@ export default function Dashboard() {
 
             case "lighting":
               const light = latestData["luz"];
+              const lightEnabled = sensorStates.lighting;
+
               return {
                 ...item,
-                value: light?.valor || "Esperando...",
-                trend: light?.unidad || "Esperando datos...",
-                color:
-                  light?.valor === "SI"
+                value: !lightEnabled
+                  ? "Apagado"
+                  : light?.valor || "Esperando...",
+                trend: !lightEnabled
+                  ? "Sensor apagado"
+                  : light?.unidad || "Esperando datos...",
+                color: !lightEnabled
+                  ? ("danger" as const)
+                  : light?.valor === "SI"
                     ? ("success" as const)
                     : light?.valor === "NO"
                       ? ("warning" as const)
@@ -153,13 +258,81 @@ export default function Dashboard() {
 
             case "motion_detection":
               const distance = latestData["distancia"];
+              const distanceEnabled = sensorStates.motion_detection;
+
               return {
                 ...item,
-                value: distance?.valor ? `${distance.valor} cm` : "-- cm",
-                trend: distance ? "Detectando" : "Esperando datos...",
-                color: distance?.valor
-                  ? ("primary" as const)
-                  : ("warning" as const),
+                value: !distanceEnabled
+                  ? "Apagado"
+                  : distance?.valor
+                    ? `${distance.valor} cm`
+                    : "-- cm",
+                trend: !distanceEnabled
+                  ? "Sensor apagado"
+                  : distance
+                    ? "Detectando"
+                    : "Esperando datos...",
+                color: !distanceEnabled
+                  ? ("danger" as const)
+                  : distance?.valor
+                    ? ("primary" as const)
+                    : ("warning" as const),
+              };
+
+            case "pressure":
+              const pressure = latestData["presión"];
+              const pressureEnabled = sensorStates.pressure;
+
+              return {
+                ...item,
+                value: !pressureEnabled
+                  ? "Apagado"
+                  : pressure?.valor
+                    ? `${pressure.valor} hPa`
+                    : "-- hPa",
+                trend: !pressureEnabled
+                  ? "Sensor apagado"
+                  : pressure?.valor
+                    ? `${pressure.valor < 1010 ? "Baja presión" : pressure.valor > 1025 ? "Alta presión" : "Normal"}`
+                    : "Esperando datos...",
+                color: !pressureEnabled
+                  ? ("danger" as const)
+                  : pressure?.valor
+                    ? pressure.valor < 1005 || pressure.valor > 1030
+                      ? ("danger" as const)
+                      : pressure.valor < 1010 || pressure.valor > 1025
+                        ? ("warning" as const)
+                        : ("success" as const)
+                    : ("warning" as const),
+              };
+
+            case "fan":
+              const fan = latestData["ventilador"];
+              const fanEnabled = sensorStates.fan;
+
+              return {
+                ...item,
+                value: !fanEnabled
+                  ? "Apagado"
+                  : fan?.valor === "ON"
+                    ? "Encendido"
+                    : fan?.valor === "OFF"
+                      ? "Apagado"
+                      : "Estado desconocido",
+                trend: !fanEnabled
+                  ? "Motor deshabilitado"
+                  : fan?.valor === "ON"
+                    ? "Motor funcionando"
+                    : fan?.valor === "OFF"
+                      ? "Motor detenido"
+                      : "Esperando datos...",
+                color: !fanEnabled
+                  ? ("danger" as const)
+                  : fan?.valor === "ON"
+                    ? ("success" as const)
+                    : fan?.valor === "OFF"
+                      ? ("warning" as const)
+                      : ("warning" as const),
               };
 
             default:
@@ -168,38 +341,7 @@ export default function Dashboard() {
         })
       );
     }
-  }, [sensorData, isConnected]);
-
-  const energyMetrics = [
-    {
-      id: "lighting_consumption",
-      label: "Iluminación",
-      value: "850 kWh",
-      percentage: 65,
-      color: "primary" as const,
-    },
-    {
-      id: "hvac_consumption",
-      label: "Climatización",
-      value: "1.2 MWh",
-      percentage: 85,
-      color: "warning" as const,
-    },
-    {
-      id: "equipment_consumption",
-      label: "Equipos",
-      value: "450 kWh",
-      percentage: 45,
-      color: "success" as const,
-    },
-    {
-      id: "other_consumption",
-      label: "Otros",
-      value: "200 kWh",
-      percentage: 25,
-      color: "secondary" as const,
-    },
-  ];
+  }, [sensorData, isConnected, sensorStates]);
 
   // Generar alertas basadas en los datos de sensores
   const [alerts, setAlerts] = useState([
@@ -275,10 +417,183 @@ export default function Dashboard() {
           timestamp: buzzer.timestamp,
         });
       }
+
+      // Alerta de presión atmosférica anómala
+      const pressure = latestData["presión"];
+      if (pressure?.valor && (pressure.valor < 1005 || pressure.valor > 1030)) {
+        newAlerts.push({
+          id: "pressure_alert",
+          title:
+            pressure.valor < 1005 ? "Presión Muy Baja" : "Presión Muy Alta",
+          description: `Sensor reporta ${pressure.valor} hPa - ${pressure.valor < 1005 ? "Posible mal tiempo" : "Condiciones atmosféricas inusuales"}`,
+          level: "danger" as const,
+          timestamp: pressure.timestamp,
+        });
+      } else if (
+        pressure?.valor &&
+        (pressure.valor < 1010 || pressure.valor > 1025)
+      ) {
+        newAlerts.push({
+          id: "pressure_warning",
+          title: pressure.valor < 1010 ? "Presión Baja" : "Presión Alta",
+          description: `Sensor reporta ${pressure.valor} hPa - Monitoreo recomendado`,
+          level: "warning" as const,
+          timestamp: pressure.timestamp,
+        });
+      }
+
+      // Alerta de ventilador
+      const fan = latestData["ventilador"];
+      if (fan?.valor === "ON" && sensorStates.fan) {
+        newAlerts.push({
+          id: "fan_active",
+          title: "Ventilador Activo",
+          description: "El ventilador DC está funcionando correctamente",
+          level: "info" as const,
+          timestamp: fan.timestamp,
+        });
+      } else if (fan?.valor === "ERROR") {
+        newAlerts.push({
+          id: "fan_error",
+          title: "Error en Ventilador",
+          description: "Se detectó un error en el ventilador DC",
+          level: "danger" as const,
+          timestamp: fan.timestamp,
+        });
+      }
     }
 
     setAlerts(newAlerts);
   }, [sensorData, isConnected, connectionStatus]);
+
+  // Estado específico del ventilador
+  const fanData = sensorData.find(
+    (data) =>
+      data.sensor_type?.toLowerCase() === "ventilador" ||
+      data.topic.includes("fan") ||
+      data.topic.includes("motor")
+  );
+
+  // Handler específico para el ventilador
+  const handleToggleFan = () => {
+    const newState = !sensorStates.fan;
+
+    const payload = {
+      enabled: newState,
+      timestamp: new Date().toISOString(),
+      source: "frontend",
+    };
+
+    console.log(
+      `🔧 Sending fan command to: GRUPO2/commands/rasp01/actuators/fan`
+    );
+    console.log(`🔧 Payload:`, payload);
+    console.log(`🔧 Current fan state: ${sensorStates.fan} -> ${newState}`);
+
+    const success = publishCommand(
+      "GRUPO2/commands/rasp01/actuators/fan",
+      payload
+    );
+    if (success) {
+      console.log(
+        `✅ Fan command sent successfully: ${newState ? "ON" : "OFF"}`
+      );
+      setSensorStates((prev) => ({
+        ...prev,
+        fan: newState,
+      }));
+    } else {
+      console.error(`❌ Error sending fan command`);
+    }
+  };
+
+  // Add toggle handler
+  const handleTogglePower = (id: string) => {
+    setSensorStates((prev) => {
+      const newState = !prev[id as SensorId];
+
+      // Mapeo de comandos del dashboard a comandos MQTT
+      const mqttCommands = [];
+
+      switch (id) {
+        case "temperature_humidity":
+          mqttCommands.push(
+            {
+              topic: "GRUPO2/commands/rasp01/sensors/temperature",
+              enabled: newState,
+            },
+            {
+              topic: "GRUPO2/commands/rasp01/sensors/humidity",
+              enabled: newState,
+            }
+          );
+          break;
+        case "lighting":
+          mqttCommands.push({
+            topic: "GRUPO2/commands/rasp01/sensors/light",
+            enabled: newState,
+          });
+          break;
+        case "motion_detection":
+          mqttCommands.push({
+            topic: "GRUPO2/commands/rasp01/sensors/distance",
+            enabled: newState,
+          });
+          break;
+        case "pressure":
+          mqttCommands.push({
+            topic: "GRUPO2/commands/rasp01/sensors/pressure",
+            enabled: newState,
+          });
+          break;
+        case "fan":
+          mqttCommands.push({
+            topic: "GRUPO2/commands/rasp01/actuators/fan",
+            enabled: newState,
+          });
+          break;
+        default:
+          mqttCommands.push({
+            topic: `GRUPO2/commands/rasp01/sensors/${id}`,
+            enabled: newState,
+          });
+      }
+
+      // Enviar todos los comandos MQTT necesarios
+      let allCommandsSuccessful = true;
+      mqttCommands.forEach(({ topic, enabled }) => {
+        const payload = {
+          enabled,
+          timestamp: new Date().toISOString(),
+          source: "frontend",
+        };
+
+        const success = publishCommand(topic, payload);
+        if (success) {
+          console.log(
+            `✅ Command sent: ${topic} ${enabled ? "ENABLED" : "DISABLED"}`
+          );
+        } else {
+          console.error(`❌ Error sending command for ${topic}`);
+          allCommandsSuccessful = false;
+        }
+      });
+
+      // Si algún comando falló, revertir explícitamente el estado
+      if (!allCommandsSuccessful) {
+        console.log(`🔄 Reverting state for ${id} due to MQTT command failure`);
+        return {
+          ...prev,
+          [id]: !newState, // Revertir explícitamente al estado opuesto
+        };
+      }
+
+      return {
+        ...prev,
+        [id]: newState,
+      };
+    });
+  };
 
   return (
     <div className="space-y-8">
@@ -311,28 +626,41 @@ export default function Dashboard() {
         <StatusOverviewGrid
           statusData={statusData}
           onViewDetails={(id) => console.log("View details for:", id)}
+          sensorStates={sensorStates}
+          onTogglePower={handleTogglePower}
         />
       </section>
 
-      {/* Bottom panels */}
+      {/* Fan Control Panel */}
       <section className="space-y-4">
         <h2 className="text-xl font-semibold text-foreground">
-          Monitoreo y Alertas
+          Control de Actuadores
         </h2>
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 lg:gap-8">
-          {/* Energy Consumption Panel */}
-          <EnergyConsumptionPanel
-            totalConsumption="2.7 MWh"
-            metrics={energyMetrics}
-          />
+        <FanControlPanel
+          isConnected={isConnected}
+          fanState={
+            fanData
+              ? {
+                  valor: fanData.valor,
+                  timestamp: fanData.timestamp,
+                }
+              : undefined
+          }
+          onToggleFan={handleToggleFan}
+          isEnabled={sensorStates.fan}
+        />
+      </section>
 
-          {/* Alerts Panel */}
-          <AlertsPanel
-            alerts={alerts}
-            onViewAll={() => console.log("View all alerts")}
-            onSettings={() => console.log("Alert settings")}
-          />
-        </div>
+      {/* Alerts Panel */}
+      <section className="space-y-4">
+        <h2 className="text-xl font-semibold text-foreground">
+          Alertas del Sistema
+        </h2>
+        <AlertsPanel
+          alerts={alerts}
+          onViewAll={() => console.log("View all alerts")}
+          onSettings={() => console.log("Alert settings")}
+        />
       </section>
     </div>
   );

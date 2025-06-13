@@ -17,7 +17,7 @@ export default function AlertsDemo() {
 
   const simulateTemperatureHigh = () => {
     const data = {
-      topic: "siepa/sensors/temperature",
+      topic: "GRUPO2/sensores/rasp01/temperatura",
       valor: 42,
       unidad: "°C",
       timestamp: new Date().toLocaleString(),
@@ -30,7 +30,7 @@ export default function AlertsDemo() {
 
   const simulateTemperatureLow = () => {
     const data = {
-      topic: "siepa/sensors/temperature",
+      topic: "GRUPO2/sensores/rasp01/temperatura",
       valor: 3,
       unidad: "°C",
       timestamp: new Date().toLocaleString(),
@@ -43,7 +43,7 @@ export default function AlertsDemo() {
 
   const simulateHumidityHigh = () => {
     const data = {
-      topic: "siepa/sensors/humidity",
+      topic: "GRUPO2/sensores/rasp01/humedad",
       valor: 85,
       unidad: "%",
       timestamp: new Date().toLocaleString(),
@@ -56,7 +56,7 @@ export default function AlertsDemo() {
 
   const simulateAirQualityBad = () => {
     const data = {
-      topic: "siepa/sensors/air_quality",
+      topic: "GRUPO2/sensores/rasp01/gas",
       valor: "Malo",
       unidad: "Malo",
       timestamp: new Date().toLocaleString(),
@@ -69,7 +69,7 @@ export default function AlertsDemo() {
 
   const simulateDistanceClose = () => {
     const data = {
-      topic: "siepa/sensors/distance",
+      topic: "GRUPO2/sensores/rasp01/distancia",
       valor: 1,
       unidad: "cm",
       timestamp: new Date().toLocaleString(),
@@ -82,7 +82,7 @@ export default function AlertsDemo() {
 
   const simulateHumidityWarning = () => {
     const data = {
-      topic: "siepa/sensors/humidity",
+      topic: "GRUPO2/sensores/rasp01/humedad",
       valor: 75,
       unidad: "%",
       timestamp: new Date().toLocaleString(),
@@ -97,7 +97,7 @@ export default function AlertsDemo() {
     // Simular datos normales
     const normalData = [
       {
-        topic: "siepa/sensors/temperature",
+        topic: "GRUPO2/sensores/rasp01/temperatura",
         valor: 22,
         unidad: "°C",
         timestamp: new Date().toLocaleString(),
@@ -106,7 +106,7 @@ export default function AlertsDemo() {
         evalValue: 22,
       },
       {
-        topic: "siepa/sensors/humidity",
+        topic: "GRUPO2/sensores/rasp01/humedad",
         valor: 45,
         unidad: "%",
         timestamp: new Date().toLocaleString(),
@@ -115,7 +115,7 @@ export default function AlertsDemo() {
         evalValue: 45,
       },
       {
-        topic: "siepa/sensors/air_quality",
+        topic: "GRUPO2/sensores/rasp01/gas",
         valor: "Bueno",
         unidad: "Bueno",
         timestamp: new Date().toLocaleString(),
