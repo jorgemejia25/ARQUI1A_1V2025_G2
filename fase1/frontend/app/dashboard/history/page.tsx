@@ -268,7 +268,12 @@ export default function HistoryPage() {
           </span>
           {lastUpdate && (
             <span className="text-xs text-foreground-500">
-              {lastUpdate.toLocaleTimeString()}
+              {lastUpdate.toLocaleTimeString("es-ES", {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+                hour12: false,
+              })}
             </span>
           )}
         </div>

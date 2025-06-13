@@ -36,6 +36,7 @@ import { useEffect, useState } from "react";
 
 import AlertsPanel from "@/components/organisms/AlertsPanel";
 import FanControlPanel from "@/components/organisms/FanControlPanel";
+import LEDControlPanel from "@/components/organisms/LEDControlPanel";
 import StatusOverviewGrid from "@/components/organisms/StatusOverviewGrid";
 import { useMqtt } from "../mqtt-sensors/useMqtt";
 
@@ -65,6 +66,19 @@ export default function Dashboard() {
     motion_detection: true,
     pressure: true,
     fan: true,
+  });
+
+  // Estado para los LEDs y buzzer
+  const [ledStates, setLedStates] = useState({
+    manual_mode: false,
+    leds: {
+      temperature: false,
+      humidity: false,
+      light: false,
+      air_quality: false,
+    },
+    buzzer: false,
+    timestamp: undefined,
   });
 
   const [statusData, setStatusData] = useState<StatusItem[]>([
@@ -127,6 +141,9 @@ export default function Dashboard() {
       "GRUPO2/actuadores/rasp01",
       "GRUPO2/actuadores/rasp01/+",
       "GRUPO2/status/rasp01/sensors/+",
+      "GRUPO2/status/rasp01/leds",
+      "GRUPO2/commands/rasp01/leds/+",
+      "GRUPO2/commands/rasp01/buzzer",
     ],
     (sensorType: string, enabled: boolean) => {
       setSensorStates((prev) => ({
@@ -135,6 +152,78 @@ export default function Dashboard() {
       }));
     }
   );
+
+  // Procesar datos de LEDs y buzzer desde MQTT
+  useEffect(() => {
+    const ledData = sensorData.find(
+      (data) => data.topic === "GRUPO2/status/rasp01/leds"
+    );
+
+    const buzzerData = sensorData.find(
+      (data) => data.topic === "GRUPO2/actuadores/rasp01/buzzer"
+    );
+
+    console.log(`🔍 [LED Processing] LED Data encontrada:`, ledData);
+    console.log(`🔍 [LED Processing] Buzzer Data encontrada:`, buzzerData);
+
+    if (ledData) {
+      let processedData = null;
+
+      // El backend puede enviar datos en diferentes formatos
+      if (typeof ledData.valor === "object") {
+        processedData = ledData.valor;
+      } else if (
+        typeof ledData === "object" &&
+        ledData.manual_mode !== undefined
+      ) {
+        processedData = ledData;
+      }
+
+      if (processedData) {
+        console.log(`🔍 [LED Processing] Procesando datos:`, processedData);
+
+        setLedStates((prev) => {
+          const newState = {
+            ...prev,
+            manual_mode: processedData.manual_mode || false,
+            leds: processedData.leds || {
+              temperature: false,
+              humidity: false,
+              light: false,
+              air_quality: false,
+            },
+            buzzer:
+              processedData.buzzer !== undefined
+                ? processedData.buzzer
+                : prev.buzzer,
+            timestamp: ledData.timestamp || new Date().toISOString(),
+          };
+
+          console.log(`🔍 [LED Processing] Nuevo estado de LEDs:`, newState);
+          return newState;
+        });
+      }
+    }
+
+    // También procesar buzzer de su topic específico si existe
+    if (buzzerData) {
+      console.log(`🔍 [Buzzer Processing] Procesando buzzer data:`, buzzerData);
+
+      setLedStates((prev) => ({
+        ...prev,
+        buzzer:
+          buzzerData.valor === true ||
+          buzzerData.valor === "ON" ||
+          buzzerData.valor === "on",
+        timestamp: buzzerData.timestamp || prev.timestamp,
+      }));
+    }
+  }, [sensorData]);
+
+  // Debug: Log cuando cambie el estado de LEDs
+  useEffect(() => {
+    console.log(`🔍 [LED State] Estado de LEDs actualizado:`, ledStates);
+  }, [ledStates]);
 
   // Actualizar statusData cuando lleguen nuevos datos del MQTT
   useEffect(() => {
@@ -474,6 +563,142 @@ export default function Dashboard() {
       data.topic.includes("motor")
   );
 
+  // Handler para comandos de LEDs y buzzer
+  const handleLedCommand = (command: any) => {
+    let topic = "";
+    let payload = {};
+
+    switch (command.type) {
+      case "control":
+        topic = "GRUPO2/commands/rasp01/leds/control";
+        payload = {
+          mode: command.mode,
+          timestamp: new Date().toISOString(),
+          source: "frontend",
+        };
+
+        // Actualizar estado local inmediatamente
+        setLedStates((prev) => ({
+          ...prev,
+          manual_mode: command.mode === "manual",
+          timestamp: new Date().toISOString(),
+        }));
+        break;
+
+      case "individual":
+        topic = "GRUPO2/commands/rasp01/leds/individual";
+        payload = {
+          led: command.led,
+          action: command.action,
+          timestamp: new Date().toISOString(),
+          source: "frontend",
+        };
+
+        // Actualizar estado local inmediatamente
+        if (command.action === "toggle") {
+          setLedStates((prev) => ({
+            ...prev,
+            leds: {
+              ...prev.leds,
+              [command.led]: !prev.leds[command.led as keyof typeof prev.leds],
+            },
+            timestamp: new Date().toISOString(),
+          }));
+        }
+        break;
+
+      case "pattern":
+        topic = "GRUPO2/commands/rasp01/leds/pattern";
+        payload = {
+          pattern: command.pattern,
+          timestamp: new Date().toISOString(),
+          source: "frontend",
+        };
+
+        // Actualizar estado local inmediatamente según el patrón
+        let newLedStates = { ...ledStates.leds };
+        switch (command.pattern) {
+          case "all_on":
+            newLedStates = {
+              temperature: true,
+              humidity: true,
+              light: true,
+              air_quality: true,
+            };
+            break;
+          case "all_off":
+            newLedStates = {
+              temperature: false,
+              humidity: false,
+              light: false,
+              air_quality: false,
+            };
+            break;
+          case "alternate":
+            newLedStates = {
+              temperature: true,
+              humidity: false,
+              light: true,
+              air_quality: false,
+            };
+            break;
+          case "sequence":
+            // Para secuencia, encendemos el primero inicialmente
+            newLedStates = {
+              temperature: true,
+              humidity: false,
+              light: false,
+              air_quality: false,
+            };
+            break;
+        }
+
+        setLedStates((prev) => ({
+          ...prev,
+          leds: newLedStates,
+          timestamp: new Date().toISOString(),
+        }));
+        break;
+
+      case "buzzer":
+        topic = "GRUPO2/commands/rasp01/buzzer";
+        payload = {
+          enabled: command.state,
+          timestamp: new Date().toISOString(),
+          source: "frontend",
+        };
+
+        // Actualizar estado local inmediatamente
+        setLedStates((prev) => ({
+          ...prev,
+          buzzer: command.state,
+          timestamp: new Date().toISOString(),
+        }));
+        break;
+
+      default:
+        console.error("Tipo de comando LED/Buzzer desconocido:", command.type);
+        return;
+    }
+
+    console.log(
+      `🔧 [LED Control] Enviando comando ${command.type === "buzzer" ? "Buzzer" : "LED"} a: ${topic}`
+    );
+    console.log(`🔧 [LED Control] Payload:`, payload);
+    console.log(`🔧 [LED Control] Estado actual antes del comando:`, ledStates);
+
+    const success = publishCommand(topic, payload);
+    if (success) {
+      console.log(
+        `✅ [LED Control] Comando ${command.type === "buzzer" ? "Buzzer" : "LED"} enviado exitosamente`
+      );
+    } else {
+      console.error(
+        `❌ [LED Control] Error enviando comando ${command.type === "buzzer" ? "Buzzer" : "LED"}`
+      );
+    }
+  };
+
   // Handler específico para el ventilador
   const handleToggleFan = () => {
     const newState = !sensorStates.fan;
@@ -636,19 +861,26 @@ export default function Dashboard() {
         <h2 className="text-xl font-semibold text-foreground">
           Control de Actuadores
         </h2>
-        <FanControlPanel
-          isConnected={isConnected}
-          fanState={
-            fanData
-              ? {
-                  valor: fanData.valor,
-                  timestamp: fanData.timestamp,
-                }
-              : undefined
-          }
-          onToggleFan={handleToggleFan}
-          isEnabled={sensorStates.fan}
-        />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <FanControlPanel
+            isConnected={isConnected}
+            fanState={
+              fanData
+                ? {
+                    valor: fanData.valor,
+                    timestamp: fanData.timestamp,
+                  }
+                : undefined
+            }
+            onToggleFan={handleToggleFan}
+            isEnabled={sensorStates.fan}
+          />
+          <LEDControlPanel
+            isConnected={isConnected}
+            ledStates={ledStates}
+            onLedCommand={handleLedCommand}
+          />
+        </div>
       </section>
 
       {/* Alerts Panel */}

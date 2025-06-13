@@ -16,9 +16,10 @@
  */
 
 import { Card, CardBody, CardHeader } from "@heroui/card";
+import { Fan, Power, Zap } from "lucide-react";
+
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { Fan, Power, Zap } from "lucide-react";
 
 interface FanControlPanelProps {
   isConnected: boolean;
@@ -113,7 +114,12 @@ export default function FanControlPanel({
             <div className="flex justify-between items-center text-sm">
               <span className="text-foreground-600">Última actualización:</span>
               <span className="font-medium">
-                {new Date(fanState.timestamp).toLocaleTimeString()}
+                {new Date(fanState.timestamp).toLocaleTimeString("es-ES", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  second: "2-digit",
+                  hour12: false,
+                })}
               </span>
             </div>
           )}

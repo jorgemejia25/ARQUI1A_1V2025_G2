@@ -222,6 +222,12 @@ export const useMqtt = (
           sensor_type: "Presión",
           evaluationType: "pressure",
         };
+      case "leds":
+        return {
+          unidad: "Estado",
+          sensor_type: "LEDs",
+          evaluationType: "leds",
+        };
       default:
         return {
           unidad: "",

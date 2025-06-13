@@ -238,7 +238,12 @@ export default function MqttDebugger() {
                                 {msg.topic}
                               </span>
                               <span className="text-gray-500">
-                                {msg.timestamp.toLocaleTimeString()}
+                                {msg.timestamp.toLocaleTimeString("es-ES", {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                  second: "2-digit",
+                                  hour12: false,
+                                })}
                               </span>
                             </div>
                             {type === "history" &&
