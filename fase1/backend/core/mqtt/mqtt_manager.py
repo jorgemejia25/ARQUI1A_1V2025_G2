@@ -469,6 +469,41 @@ class MQTTManager:
         }
         return error_messages.get(rc, f"Error desconocido ({rc})")
     
+    def publish_alert(self, alert_type: str, sensor: str, message: str, value: float, threshold: float) -> bool:
+        """Publica una alerta del sistema"""
+        if not self.connected:
+            return False
+            
+        try:
+            alert_data = {
+                'type': alert_type,  # 'danger' o 'warning'
+                'sensor': sensor,
+                'message': message,
+                'value': value,
+                'threshold': threshold,
+                'timestamp': time.time(),
+                'system': 'SIEPA_Backend'
+            }
+            
+            # Publicar en tópico de alertas
+            result = self.client.publish(
+                "GRUPO2/alerts/rasp01",
+                json.dumps(alert_data),
+                qos=1,  # QoS 1 para garantizar entrega
+                retain=False
+            )
+            
+            if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                print(f"🚨 Alerta publicada: {alert_type} - {message}")
+                return True
+            else:
+                print(f"❌ Error publicando alerta: {result.rc}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error enviando alerta: {e}")
+            return False
+
     def is_connected(self) -> bool:
         """Verifica si está conectado"""
         return self.connected and self.client and self.client.is_connected() if MQTT_AVAILABLE else False 

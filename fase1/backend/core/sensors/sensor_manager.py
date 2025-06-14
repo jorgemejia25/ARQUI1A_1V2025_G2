@@ -340,10 +340,22 @@ class SensorManager:
         # Gestionar LEDs activos (apagar después de 5 segundos)
         self.gestionar_leds()
         
-        # Leer sensores EXACTAMENTE igual que allin_w_display.py
-        temp, hum = self.leer_dht11()
-        distancia = self.leer_ultrasonico()
-        voltaje_ldr = self.leer_ldr()
+        # Debug: Mostrar estado de sensores habilitados
+        if hasattr(self, '_last_sensors_status_print'):
+            if time.time() - self._last_sensors_status_print > 10:  # Cada 10 segundos
+                enabled_sensors = [k for k, v in self.sensors_enabled.items() if v]
+                disabled_sensors = [k for k, v in self.sensors_enabled.items() if not v]
+                print(f"📊 [Sensores] Habilitados: {enabled_sensors}")
+                if disabled_sensors:
+                    print(f"📊 [Sensores] Deshabilitados: {disabled_sensors}")
+                self._last_sensors_status_print = time.time()
+        else:
+            self._last_sensors_status_print = time.time()
+        
+        # Leer sensores verificando si están habilitados
+        temp, hum = self.leer_dht11() if self.is_sensor_enabled('temperature') or self.is_sensor_enabled('humidity') else (None, None)
+        distancia = self.leer_ultrasonico() if self.is_sensor_enabled('distance') else None
+        voltaje_ldr = self.leer_ldr() if self.is_sensor_enabled('light') else None
         
         # Calcular lux igual que allin_w_display.py
         if voltaje_ldr is not None:
@@ -351,9 +363,9 @@ class SensorManager:
         else:
             lux = None
             
-        voltaje_mq135 = self.leer_mq135()
+        voltaje_mq135 = self.leer_mq135() if self.is_sensor_enabled('air_quality') else None
         ppm = round((voltaje_mq135 / 3.3) * 1000) if voltaje_mq135 else 0
-        presion = self.leer_presion()
+        presion = self.leer_presion() if self.is_sensor_enabled('pressure') else None
 
         # Determinar si hay luz basándose en voltaje del LDR (EXACTO de allin_w_display.py)
         if voltaje_ldr is not None:

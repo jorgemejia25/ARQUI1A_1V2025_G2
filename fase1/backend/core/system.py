@@ -113,6 +113,12 @@ class SIEPASystem:
                     self._set_motor_state(True)
                     self.sensor_manager.activar_alerta("Aire contaminado", SENSOR_CONFIG['LED_AIRE'])
                     
+                    # Enviar alerta crítica por MQTT
+                    if self.mqtt_manager:
+                        self.mqtt_manager.publish_alert("danger", "air_quality", 
+                                                       f"💨 Aire contaminado detectado: {ppm:.0f} ppm - ¡Ventilación activada!", 
+                                                       ppm, 400)
+                    
                     # Mostrar mensaje en LCD igual que allin_w_display.py
                     if hasattr(self.display_manager, 'lcd'):
                         self.display_manager.clear()
@@ -133,17 +139,41 @@ class SIEPASystem:
             # Verificar alertas críticas EXACTAMENTE igual que allin_w_display.py
             if temp is not None and temp > 30:
                 self.sensor_manager.activar_alerta("Temp. muy alta", SENSOR_CONFIG['LED_TEMP'])
+                # Enviar alerta por MQTT
+                if self.mqtt_manager:
+                    self.mqtt_manager.publish_alert("danger", "temperature", 
+                                                   f"🔥 Temperatura muy alta: {temp}°C - ¡Riesgo de sobrecalentamiento!", 
+                                                   temp, 30)
 
             if hum is not None and hum > 60:  # CAMBIO: 60% como en allin_w_display.py
                 self.sensor_manager.activar_alerta("Humedad alta", SENSOR_CONFIG['LED_HUM'])
+                # Enviar alerta por MQTT
+                if self.mqtt_manager:
+                    self.mqtt_manager.publish_alert("warning", "humidity", 
+                                                   f"☔ Humedad alta: {hum}% - Ambiente húmedo", 
+                                                   hum, 60)
 
             # Usar no_hay_luz como en allin_w_display.py (basado en voltaje >= 1.2V)
             no_hay_luz = sensor_data.get('no_hay_luz', False)
             if voltaje_ldr is not None and no_hay_luz:
                 self.sensor_manager.activar_alerta("No hay luz", SENSOR_CONFIG['LED_LUZ'])
+                # Enviar alerta por MQTT
+                if self.mqtt_manager:
+                    self.mqtt_manager.publish_alert("info", "light", 
+                                                   "💡 No hay luz detectada en el ambiente", 
+                                                   voltaje_ldr, 1.2)
 
             if presion is not None and (presion < 980 or presion > 1030):
                 self.sensor_manager.activar_alerta("Presion anormal", SENSOR_CONFIG['LED_AIRE'])  # Usar LED azul para presión
+                # Enviar alerta por MQTT
+                if self.mqtt_manager:
+                    alert_type = "danger" if presion < 980 or presion > 1030 else "warning"
+                    message = f"⚠️ Presión atmosférica anormal: {presion:.1f} hPa"
+                    if presion < 980:
+                        message += " - Presión muy baja"
+                    else:
+                        message += " - Presión muy alta"
+                    self.mqtt_manager.publish_alert(alert_type, "pressure", message, presion, 980 if presion < 980 else 1030)
             
             # Determinar qué LEDs están activos (automático vs manual)
             if self.sensor_manager.is_manual_led_control():
@@ -177,8 +207,8 @@ class SIEPASystem:
                 # Publicar estado de los LEDs
                 self.mqtt_manager.publish_led_status(led_states)
             
-            # Esperar antes de la siguiente lectura (igual que allin_w_display.py usa 0.5 segundos)
-            time.sleep(0.5)
+            # Esperar antes de la siguiente lectura (actualización cada 1 segundo)
+            time.sleep(1.0)
     
     def _handle_mqtt_command(self, topic: str, payload: Dict[str, Any]):
         """Maneja comandos recibidos por MQTT"""
@@ -247,16 +277,21 @@ class SIEPASystem:
             else:
                 # Comando específico para un sensor
                 enabled = payload.get('enabled', True)
+                print(f"🔧 [Sensor Control] Procesando comando para sensor {sensor_type}: {'HABILITAR' if enabled else 'DESHABILITAR'}")
                 success = self.sensor_manager.enable_sensor(sensor_type, enabled)
-                if success and self.mqtt_manager:
-                    # Enviar confirmación
-                    response_topic = f"GRUPO2/status/rasp01/sensors/{sensor_type}"
-                    response_payload = {
-                        'sensor': sensor_type,
-                        'enabled': enabled,
-                        'timestamp': time.time()
-                    }
-                    self.mqtt_manager.client.publish(response_topic, json.dumps(response_payload))
+                if success:
+                    print(f"✅ [Sensor Control] Sensor {sensor_type} {'habilitado' if enabled else 'deshabilitado'} exitosamente")
+                    if self.mqtt_manager:
+                        # Enviar confirmación
+                        response_topic = f"GRUPO2/status/rasp01/sensors/{sensor_type}"
+                        response_payload = {
+                            'sensor': sensor_type,
+                            'enabled': enabled,
+                            'timestamp': time.time()
+                        }
+                        self.mqtt_manager.client.publish(response_topic, json.dumps(response_payload))
+                else:
+                    print(f"❌ [Sensor Control] Error al cambiar estado del sensor {sensor_type}")
         
         elif topic.startswith('GRUPO2/commands/rasp01/leds/'):
             # Comandos de control de LEDs
