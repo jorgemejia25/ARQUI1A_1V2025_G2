@@ -9,3 +9,7 @@
 | 3 | ESTEBAN TRAMPE | 202300431|
 | 4 | FATIMA CEREZO  | 202300434|
 | 5 | VALERY ALARCÓN | 202300794| 
+
+-Commit de Verificación:
+
+2025-06-14-00:17
